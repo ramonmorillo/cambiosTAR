@@ -26,6 +26,30 @@ BLOQUES_MOTIVO = [
     "Otro",
 ]
 
+COLUMNAS_EXPORTACION = [
+    "fecha",
+    "año",
+    "mes",
+    "ID seudonimizado",
+    "TAR antiguo",
+    "TAR nuevo",
+    "transición TAR",
+    "motivo_normalizado",
+    "motivo_original",
+]
+
+COLUMNAS_SEGURAS = [
+    "fecha",
+    "año",
+    "mes",
+    "ID seudonimizado",
+    "TAR antiguo",
+    "TAR nuevo",
+    "transición TAR",
+    "motivo_normalizado",
+    "motivo_original",
+]
+
 
 def _normalizar_nombre_columna(nombre: object) -> str:
     return str(nombre).strip()
@@ -36,6 +60,12 @@ def _texto_basico(texto: object) -> str:
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(caracter for caracter in texto if not unicodedata.combining(caracter))
     return re.sub(r"\s+", " ", texto)
+
+
+def _texto_limpio(valor: object) -> str:
+    if pd.isna(valor):
+        return ""
+    return re.sub(r"\s+", " ", str(valor)).strip()
 
 
 def ignorar_columnas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
@@ -53,7 +83,7 @@ def ignorar_columnas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
 def validar_columnas(df: pd.DataFrame, columnas_requeridas: Iterable[str] = COLUMNAS_REQUERIDAS) -> None:
     faltantes = [columna for columna in columnas_requeridas if columna not in df.columns]
     if faltantes:
-        raise ValueError("Faltan columnas requeridas: " + ", ".join(faltantes))
+        raise ValueError("Faltan columnas obligatorias: " + ", ".join(faltantes))
 
 
 def clasificar_motivo(motivo: object) -> str:
@@ -62,13 +92,41 @@ def clasificar_motivo(motivo: object) -> str:
     if not texto:
         return "Otro"
 
-    if any(palabra in texto for palabra in ["fracaso", "virolog", "rebote", "viremia", "carga viral", "resistencia"]):
+    if any(palabra in texto for palabra in ["fracaso", "rebote", "viremia", "resistencia", "carga viral detectable", "virolog"]):
         return "Fracaso virológico"
-    if any(palabra in texto for palabra in ["interaccion", "rifamp", "antiepilep", "contraindic", "incompat"]):
+    if any(palabra in texto for palabra in ["interaccion", "ddi", "interacciones", "comedicacion", "medicacion concomitante"]):
         return "Interacción"
-    if any(palabra in texto for palabra in ["advers", "toxic", "intoler", "renal", "hepat", "diarrea", "rash", "nause", "efecto"]):
+    if any(
+        palabra in texto
+        for palabra in [
+            "efecto adverso",
+            "advers",
+            "toxic",
+            "intoler",
+            "renal",
+            "osea",
+            "digestivo",
+            "neuropsiquiatr",
+            "diarrea",
+            "rash",
+            "nause",
+        ]
+    ):
         return "Efecto adverso"
-    if any(palabra in texto for palabra in ["optim", "simpl", "biterapia", "comod", "adher", "actualizacion", "preferencia", "reduccion", "mejora"]):
+    if any(
+        palabra in texto
+        for palabra in [
+            "optimiz",
+            "simplific",
+            "biterapia",
+            "mejora",
+            "switch",
+            "toxicidad preventiva",
+            "comodidad",
+            "preferencia",
+            "actualizacion",
+        ]
+    ):
         return "Optimización"
 
     equivalencias_directas = {
@@ -83,31 +141,62 @@ def clasificar_motivo(motivo: object) -> str:
 
 def limpiar_excel(df: pd.DataFrame, clave_secreta: str) -> pd.DataFrame:
     """Prepara un DataFrame seudonimizado sin exponer el número de historia clínica."""
+    if df.empty:
+        raise ValueError("El Excel está vacío. Cargue un archivo con registros de cambios TAR.")
+
     df = ignorar_columnas_duplicadas(df)
     validar_columnas(df)
 
-    limpio = df[COLUMNAS_REQUERIDAS].copy()
-    limpio["id_paciente"] = limpio["Número de historia clínico"].apply(
-        lambda valor: seudonimizar_historia(valor, clave_secreta)
-    )
-    limpio["marca_temporal"] = pd.to_datetime(limpio["Marca temporal"], errors="coerce")
-    limpio["tar_antiguo"] = limpio["TAR antiguo"].astype(str).str.strip()
-    limpio["tar_nuevo"] = limpio["TAR nuevo"].astype(str).str.strip()
-    limpio["motivo_original"] = limpio["Motivo"].astype(str).str.strip()
-    limpio["motivo_bloque"] = limpio["Motivo"].apply(clasificar_motivo)
-    limpio["anio"] = limpio["marca_temporal"].dt.year
-    limpio["mes"] = limpio["marca_temporal"].dt.to_period("M").astype(str).replace("NaT", pd.NA)
-    limpio["transicion"] = limpio["tar_antiguo"] + " → " + limpio["tar_nuevo"]
+    trabajo = df[COLUMNAS_REQUERIDAS].copy()
+    avisos: list[str] = []
 
-    columnas_seguras = [
-        "id_paciente",
-        "marca_temporal",
-        "anio",
-        "mes",
-        "tar_antiguo",
-        "tar_nuevo",
-        "transicion",
-        "motivo_bloque",
-        "motivo_original",
-    ]
-    return limpio[columnas_seguras].sort_values(["marca_temporal", "id_paciente"], na_position="last")
+    duplicados = int(trabajo.duplicated().sum())
+    if duplicados:
+        trabajo = trabajo.drop_duplicates().copy()
+        avisos.append(f"Se eliminaron {duplicados} registros duplicados exactos.")
+
+    historia_vacia = trabajo["Número de historia clínico"].isna() | (trabajo["Número de historia clínico"].astype(str).str.strip() == "")
+    if historia_vacia.any():
+        avisos.append(f"Se excluyeron {int(historia_vacia.sum())} registros sin número de historia clínica.")
+        trabajo = trabajo.loc[~historia_vacia].copy()
+
+    if trabajo.empty:
+        raise ValueError("No quedan registros válidos tras excluir filas sin número de historia clínica.")
+
+    trabajo["fecha"] = pd.to_datetime(trabajo["Marca temporal"], errors="coerce", dayfirst=True)
+    fechas_invalidas = int(trabajo["fecha"].isna().sum())
+    if fechas_invalidas:
+        avisos.append(f"Hay {fechas_invalidas} registros con fecha no interpretable; no aparecerán en análisis temporales.")
+
+    trabajo["TAR antiguo"] = trabajo["TAR antiguo"].apply(_texto_limpio).replace("", "No informado")
+    trabajo["TAR nuevo"] = trabajo["TAR nuevo"].apply(_texto_limpio).replace("", "No informado")
+    tar_antiguo_vacio = int((trabajo["TAR antiguo"] == "No informado").sum())
+    tar_nuevo_vacio = int((trabajo["TAR nuevo"] == "No informado").sum())
+    if tar_antiguo_vacio:
+        avisos.append(f"Hay {tar_antiguo_vacio} registros con TAR antiguo vacío marcados como 'No informado'.")
+    if tar_nuevo_vacio:
+        avisos.append(f"Hay {tar_nuevo_vacio} registros con TAR nuevo vacío marcados como 'No informado'.")
+
+    trabajo["motivo_original"] = trabajo["Motivo"].apply(_texto_limpio)
+    motivos_vacios = int((trabajo["motivo_original"] == "").sum())
+    if motivos_vacios:
+        avisos.append(f"Hay {motivos_vacios} registros con motivo vacío clasificados como 'Otro'.")
+
+    trabajo["ID seudonimizado"] = trabajo["Número de historia clínico"].apply(lambda valor: seudonimizar_historia(valor, clave_secreta))
+    trabajo["motivo_normalizado"] = trabajo["Motivo"].apply(clasificar_motivo)
+    trabajo["año"] = trabajo["fecha"].dt.year.astype("Int64")
+    trabajo["mes"] = trabajo["fecha"].dt.to_period("M").astype(str).replace("NaT", pd.NA)
+    trabajo["transición TAR"] = trabajo["TAR antiguo"] + " → " + trabajo["TAR nuevo"]
+
+    seguro = trabajo[COLUMNAS_SEGURAS].sort_values(["fecha", "ID seudonimizado"], na_position="last").reset_index(drop=True)
+    seguro.attrs["avisos"] = avisos
+    seguro.attrs["registros_originales"] = int(len(df))
+    seguro.attrs["duplicados_eliminados"] = duplicados
+    return seguro
+
+
+def preparar_exportacion(df: pd.DataFrame) -> pd.DataFrame:
+    """Devuelve solo las columnas seudonimizadas autorizadas para descarga."""
+    exportable = df[COLUMNAS_EXPORTACION].copy()
+    exportable["fecha"] = pd.to_datetime(exportable["fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
+    return exportable
