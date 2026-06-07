@@ -1,190 +1,197 @@
 # cambiosTAR
 
-**cambiosTAR** es una herramienta local, sencilla y segura para registrar, seudonimizar y analizar cambios de tratamiento antirretroviral (TAR) a partir de un Excel histórico ya existente.
+**Registro y análisis local de cambios de tratamiento antirretroviral.**
 
-La filosofía del proyecto es deliberadamente simple: **no pedir más variables clínicas al usuario**. La potencia debe venir de la limpieza, la seudonimización y el análisis automático de un registro histórico sencillo.
+cambiosTAR es una herramienta local para transformar un Excel histórico de cambios de TAR en un sistema de análisis longitudinal, seudonimizado y orientado a uso profesional. La aplicación operativa se ejecuta en el ordenador del usuario mediante **Streamlit**.
 
-> **Aviso de privacidad:** la herramienta real se ejecuta en local con Streamlit. No subas datos reales a GitHub. El número de historia clínica se seudonimiza y no se muestra ni se exporta.
+> [!IMPORTANT]
+> La página de GitHub Pages es únicamente una landing pública/documentación. No procesa datos clínicos, no permite cargar información real y no debe usarse como aplicación operativa. Los datos reales nunca deben subirse a GitHub, al repositorio ni a una web pública.
 
-## Columnas obligatorias del Excel
+## Qué problema resuelve
 
-La aplicación trabaja únicamente con estas columnas manuales:
+En muchos entornos clínicos, los cambios de tratamiento antirretroviral quedan registrados en hojas históricas con texto libre y estructura mínima. cambiosTAR permite:
 
-- `Marca temporal`
-- `Número de historia clínico`
-- `TAR antiguo`
-- `TAR nuevo`
-- `Motivo`
+- Validar que el Excel contiene las columnas mínimas necesarias.
+- Limpiar campos básicos sin añadir variables clínicas manuales nuevas.
+- Seudonimizar el número de historia clínica en local.
+- Normalizar motivos de cambio en cinco bloques.
+- Analizar tendencias temporales, motivos, transiciones TAR y trayectorias longitudinales.
+- Exportar resultados seudonimizados cuando el usuario lo decida.
 
-A partir de ellas genera automáticamente:
+## Landing pública vs app local
+
+| Componente | Finalidad | Datos reales |
+| --- | --- | --- |
+| `index.html` + `style.css` | Landing/documentación para GitHub Pages | No admite ni procesa datos |
+| `app.py` | Aplicación Streamlit ejecutada en local | Solo en el equipo del usuario |
+
+La landing pública no contiene formularios de carga ni lógica para procesar datos clínicos. La app real se lanza con `streamlit run app.py`.
+
+## Columnas requeridas
+
+La aplicación utiliza únicamente estas cinco columnas del Excel histórico:
+
+1. `Marca temporal`
+2. `Número de historia clínico`
+3. `TAR antiguo`
+4. `TAR nuevo`
+5. `Motivo`
+
+No se añaden variables clínicas manuales nuevas. Solo se generan variables derivadas internas:
 
 - `fecha`
 - `año`
 - `mes`
-- `ID seudonimizado`
 - `transición TAR`
+- `ID seudonimizado`
 - `motivo_normalizado`
 - `motivo_original`
 
-## Qué permite hacer
+## Motivos normalizados
 
-- Cargar un Excel histórico.
-- Validar columnas obligatorias y detectar errores frecuentes.
-- Limpiar y normalizar fechas, TAR y motivos.
-- Seudonimizar el número de historia clínica con SHA-256 y una clave local.
-- Analizar cambios por año, mes, motivo y transición TAR.
-- Visualizar la trayectoria longitudinal de cada paciente seudonimizado.
-- Generar y descargar un Excel ficticio de prueba.
-- Exportar un CSV seudonimizado sin el número de historia clínica original.
+El campo `Motivo` se conserva como `motivo_original` y se clasifica de forma conservadora en cinco bloques:
 
-## Privacidad y protección de datos
+- Optimización
+- Efecto adverso
+- Interacción
+- Fracaso virológico
+- Otro
 
-- Funciona completamente en local.
-- No usa APIs externas.
-- No envía datos a internet.
-- No guarda datos reales en GitHub.
-- El `Número de historia clínico` solo se lee para generar un identificador seudonimizado estable.
-- El número original no se muestra en pantalla, no aparece en gráficos y no se exporta.
-- La seudonimización usa SHA-256 con `PSEUDONYM_SECRET_KEY`, definida en un archivo `.env` local.
-- `.env`, Excel reales, CSV exportados, bases de datos y ficheros generados están ignorados por Git.
+## Instalación paso a paso
 
-## Instalación
+### 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/<usuario>/cambiosTAR.git
+cd cambiosTAR
+```
+
+### 2. Crear y activar entorno virtual
+
+Linux/macOS:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 3. Instalar dependencias
+
+```bash
 pip install -r requirements.txt
+```
+
+### 4. Configurar clave local
+
+```bash
 cp .env.example .env
-streamlit run app.py
 ```
 
 En Windows:
 
-```bat
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+```powershell
 copy .env.example .env
+```
+
+Edita `.env` y sustituye `PSEUDONYM_SECRET_KEY` por una clave larga, privada y local. Si la clave falta o sigue siendo la de ejemplo, la aplicación no procesará datos.
+
+### 5. Ejecutar la app local
+
+```bash
 streamlit run app.py
 ```
 
-Después de copiar `.env.example` a `.env`, cambia el valor de `PSEUDONYM_SECRET_KEY` por una clave local larga, privada y única antes de procesar datos reales.
+## Uso con datos ficticios
 
-## Uso
+Puedes probar el flujo completo sin datos reales de dos formas:
 
-1. Ejecuta la app con `streamlit run app.py`.
-2. Carga un Excel con las 5 columnas obligatorias.
-3. Revisa el panel de validación.
-4. Consulta el dashboard temporal, por motivos, transiciones y trayectoria longitudinal.
-5. Exporta el CSV seudonimizado si necesitas una base limpia para análisis local.
+- Desde la barra lateral de la app, descarga el Excel ficticio de prueba generado en memoria.
+- Genera localmente `data/example_ficticio.xlsx` con el script de ejemplo. El archivo no se versiona porque los binarios Excel están ignorados por Git.
 
-## Datos ficticios de prueba
-
-Puedes probar la herramienta sin datos reales de dos formas:
-
-1. Desde la app, usando el botón **Descargar Excel ficticio de prueba**.
-2. Desde terminal:
+Para generar localmente un ejemplo ficticio:
 
 ```bash
 python scripts/generar_datos_ejemplo.py
 ```
 
-El archivo se genera localmente en:
+## Uso operativo
 
-```text
-diccionarios/datos_ejemplo_ficticios.xlsx
-```
-
-Este Excel está ignorado por Git y contiene solo pacientes y números de historia ficticios.
+1. Ejecuta la app con `streamlit run app.py`.
+2. Comprueba que existe `.env` con una clave privada válida.
+3. Carga un Excel local con las cinco columnas obligatorias.
+4. Revisa los avisos de validación y limpieza.
+5. Explora el dashboard, análisis temporal, motivos, transiciones, Sankey y trayectoria longitudinal.
+6. Exporta el Excel seudonimizado solo si es necesario.
 
 ## Análisis incluidos
 
-### Dashboard general
+- Dashboard general.
+- Evolución anual y mensual.
+- Distribución de motivos.
+- Comparación entre motivos originales y normalizados.
+- Top de TAR antiguos y TAR nuevos.
+- Transiciones TAR antiguo → TAR nuevo.
+- Sankey de cambios.
+- Trayectoria longitudinal por paciente seudonimizado.
+- Exportación seudonimizada.
 
-- Total de cambios.
-- Pacientes seudonimizados.
-- Cambios por paciente.
-- Año con más cambios.
-- Motivo más frecuente.
-- Transición más frecuente.
+## Exportación de resultados
 
-### Análisis temporal
+La exportación se realiza voluntariamente desde la app y excluye siempre el número de historia clínica original. El archivo exportado contiene columnas seudonimizadas y derivadas autorizadas para análisis.
 
-- Cambios por año.
-- Cambios por mes.
-- Evolución mensual acumulada.
-- Distribución anual por motivo.
+Añade cualquier carpeta de exportación sensible a `.gitignore` y no subas esos resultados a GitHub.
 
-### Análisis por motivo
+## Protección de datos
 
-El campo `Motivo` se normaliza de forma conservadora en 5 bloques:
+- La aplicación está diseñada para ejecutarse localmente.
+- No se suben datos a servidores externos desde la app.
+- No se usan APIs externas para analizar datos clínicos.
+- El número de historia clínica se transforma con SHA-256 y una clave local.
+- La clave debe guardarse en `.env`.
+- El archivo `.env` no debe subirse nunca a GitHub.
+- Los datos reales, exportaciones sensibles y ficheros temporales deben permanecer fuera del repositorio.
+- Los ejemplos incluidos o generados localmente deben ser siempre ficticios.
+- Los archivos Excel, CSV y exportaciones no se versionan para evitar binarios o datos sensibles en pull requests.
 
-1. Optimización
-2. Efecto adverso
-3. Interacción
-4. Fracaso virológico
-5. Otro
-
-El texto original se conserva siempre en `motivo_original` para auditoría.
-
-### Transiciones TAR
-
-La app crea automáticamente:
+## Estructura del repositorio
 
 ```text
-transición TAR = TAR antiguo + " → " + TAR nuevo
+index.html                  # Landing pública de GitHub Pages
+style.css                   # Estilos de la landing
+app.py                      # Aplicación Streamlit local
+requirements.txt            # Dependencias Python
+README.md                   # Documentación del proyecto
+.env.example                # Plantilla de clave local, sin secretos reales
+data/README.md              # Aviso sobre datos ficticios y reales
+src/                        # Lógica de análisis, limpieza y seudonimización
+scripts/                    # Utilidades locales
+exports/                    # Salidas locales ignoradas por Git
 ```
 
-Incluye ranking de transiciones, transiciones por año, transiciones por motivo, Sankey de flujos principales y tabla filtrable.
+## Limitaciones actuales
 
-### Trayectoria longitudinal
+- La normalización de motivos se basa en reglas de texto conservadoras, no en un modelo clínico externo.
+- La calidad de los análisis depende de la consistencia del Excel histórico.
+- El Sankey requiere las dependencias declaradas en `requirements.txt`.
+- No sustituye una revisión clínica ni un procedimiento institucional de protección de datos.
 
-Permite seleccionar un `ID seudonimizado` y revisar la secuencia temporal de cambios, sin mostrar nunca el número de historia clínica.
+## Roadmap futuro
 
-## Exportación
+- Añadir tests automatizados de limpieza y clasificación.
+- Incorporar perfiles configurables de normalización de motivos.
+- Mejorar los informes exportables.
+- Añadir documentación visual con capturas de la app local usando datos ficticios.
+- Revisar accesibilidad y experiencia móvil de la landing.
 
-El CSV exportado incluye únicamente:
+## Autoría
 
-- `fecha`
-- `año`
-- `mes`
-- `ID seudonimizado`
-- `TAR antiguo`
-- `TAR nuevo`
-- `transición TAR`
-- `motivo_normalizado`
-- `motivo_original`
+Herramienta desarrollada por Ramón Morillo para el análisis local de cambios de tratamiento antirretroviral.
 
-Nunca incluye `Número de historia clínico`.
-
-## GitHub Pages
-
-La página publicada en GitHub Pages debe entenderse como **landing/documentación**. No es un entorno para subir datos. La aplicación real se ejecuta localmente con Streamlit mediante `streamlit run app.py`.
-
-## Estructura del proyecto
-
-```text
-cambiosTAR/
-├── app.py
-├── src/
-│   ├── pseudonimizacion.py
-│   ├── limpieza.py
-│   ├── analisis.py
-│   └── datos_ejemplo.py
-├── data/
-│   └── .gitkeep
-├── exports/
-│   └── .gitkeep
-├── diccionarios/
-│   └── .gitkeep
-├── scripts/
-│   └── generar_datos_ejemplo.py
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
----
-
-cambiosTAR · Herramienta local de análisis de cambios de TAR · Ramón Morillo
+**2026 · cambiosTAR**

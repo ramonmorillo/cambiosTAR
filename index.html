@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="cambiosTAR: herramienta local con Streamlit para registrar, seudonimizar y analizar cambios de tratamiento antirretroviral." />
+  <title>cambiosTAR · Análisis local de cambios TAR</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav" aria-label="Navegación principal">
+      <a class="brand" href="#inicio" aria-label="Inicio cambiosTAR">
+        <span class="brand-mark">✚</span>
+        <span>cambiosTAR</span>
+      </a>
+      <div class="nav-links">
+        <a href="#instalacion">Instalación</a>
+        <a href="#analisis">Análisis</a>
+        <a href="#proteccion-datos">Protección de datos</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="inicio">
+    <section class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow">Herramienta local · Streamlit · Seudonimización</p>
+        <h1>cambiosTAR</h1>
+        <h2>Registro y análisis local de cambios de tratamiento antirretroviral</h2>
+        <p class="hero-text">
+          Herramienta diseñada para transformar un Excel histórico de cambios de TAR en un sistema local de análisis longitudinal,
+          seguro y seudonimizado.
+        </p>
+        <div class="hero-actions" aria-label="Accesos rápidos">
+          <a class="button primary" href="#instalacion">Ver instalación local</a>
+          <a class="button secondary" href="#analisis">Ver módulos de análisis</a>
+          <a class="button ghost" href="#proteccion-datos">Ver aviso de protección de datos</a>
+        </div>
+      </div>
+      <aside class="hero-card" aria-label="Resumen de seguridad y flujo local">
+        <div class="status-pill">Sin carga web de datos</div>
+        <div class="mini-flow">
+          <span>Excel histórico</span>
+          <strong>→</strong>
+          <span>Streamlit local</span>
+          <strong>→</strong>
+          <span>Exportación seudonimizada</span>
+        </div>
+        <div class="hero-metrics">
+          <div><strong>5</strong><span>columnas requeridas</span></div>
+          <div><strong>8</strong><span>módulos analíticos</span></div>
+          <div><strong>0</strong><span>procesamiento en GitHub Pages</span></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="security-banner section-shell" role="note" aria-label="Aviso principal de seguridad">
+      <div class="security-icon">🛡️</div>
+      <p>
+        <strong>Esta página no procesa datos clínicos.</strong> No cargues datos reales en GitHub ni los subas al repositorio.
+        La aplicación operativa se ejecuta exclusivamente en local mediante Streamlit.
+      </p>
+    </section>
+
+    <section class="section-shell" id="que-permite">
+      <div class="section-heading">
+        <p class="eyebrow">Capacidades</p>
+        <h2>Qué permite hacer</h2>
+        <p>Un flujo completo para revisar cambios de tratamiento sin ampliar el modelo de datos con variables clínicas manuales nuevas.</p>
+      </div>
+      <div class="card-grid features-grid">
+        <article class="feature-card"><span>📥</span><h3>Cargar y validar</h3><p>Importa un Excel histórico y comprueba que incluya las columnas obligatorias.</p></article>
+        <article class="feature-card"><span>🧭</span><h3>Normalizar motivos</h3><p>Clasifica el motivo en cinco bloques definidos y mantiene el texto original.</p></article>
+        <article class="feature-card"><span>🔐</span><h3>Seudonimizar en local</h3><p>Transforma identificadores con SHA-256 y una clave privada almacenada en <code>.env</code>.</p></article>
+        <article class="feature-card"><span>📈</span><h3>Tendencias temporales</h3><p>Analiza cambios por año, mes y evolución acumulada.</p></article>
+        <article class="feature-card"><span>🎯</span><h3>Motivos de cambio</h3><p>Visualiza distribución global, evolución y auditoría de reclasificación.</p></article>
+        <article class="feature-card"><span>🔁</span><h3>Transiciones TAR</h3><p>Identifica patrones TAR antiguo → TAR nuevo y su relación con motivos.</p></article>
+        <article class="feature-card"><span>🌊</span><h3>Sankey de cambios</h3><p>Representa flujos principales entre pautas para comunicar transiciones complejas.</p></article>
+        <article class="feature-card"><span>📤</span><h3>Exportar resultados</h3><p>Genera una salida seudonimizada bajo descarga voluntaria del usuario.</p></article>
+      </div>
+    </section>
+
+    <section class="section-shell split-section" id="columnas">
+      <div class="section-heading align-left">
+        <p class="eyebrow">Modelo mínimo</p>
+        <h2>Columnas necesarias</h2>
+        <p>La app usa únicamente estas cinco columnas del Excel histórico. No se solicitan variables clínicas manuales adicionales.</p>
+      </div>
+      <div class="column-cards" aria-label="Cinco columnas requeridas">
+        <div class="column-card"><span>01</span><strong>Marca temporal</strong><small>Fecha/hora del registro</small></div>
+        <div class="column-card"><span>02</span><strong>Número de historia clínico</strong><small>Solo para seudonimización local</small></div>
+        <div class="column-card"><span>03</span><strong>TAR antiguo</strong><small>Pauta previa</small></div>
+        <div class="column-card"><span>04</span><strong>TAR nuevo</strong><small>Pauta posterior</small></div>
+        <div class="column-card"><span>05</span><strong>Motivo</strong><small>Texto original del cambio</small></div>
+      </div>
+    </section>
+
+    <section class="section-shell tinted" id="analisis">
+      <div class="section-heading">
+        <p class="eyebrow">Módulos</p>
+        <h2>Análisis incluidos</h2>
+      </div>
+      <div class="analysis-grid">
+        <div>Dashboard general</div>
+        <div>Evolución anual y mensual</div>
+        <div>Distribución de motivos</div>
+        <div>Comparación entre motivos originales y normalizados</div>
+        <div>Transiciones TAR antiguo → TAR nuevo</div>
+        <div>Sankey de cambios</div>
+        <div>Trayectoria longitudinal por paciente seudonimizado</div>
+        <div>Exportación seudonimizada</div>
+      </div>
+    </section>
+
+    <section class="section-shell" id="flujo">
+      <div class="section-heading">
+        <p class="eyebrow">Proceso operativo</p>
+        <h2>Flujo de trabajo</h2>
+      </div>
+      <ol class="workflow" aria-label="Flujo Excel histórico a exportación">
+        <li><span>Excel histórico</span></li>
+        <li><span>Validación</span></li>
+        <li><span>Limpieza</span></li>
+        <li><span>Seudonimización local</span></li>
+        <li><span>Análisis</span></li>
+        <li><span>Exportación</span></li>
+      </ol>
+    </section>
+
+    <section class="section-shell install-section" id="instalacion">
+      <div class="section-heading align-left">
+        <p class="eyebrow">App real</p>
+        <h2>Instalación local</h2>
+        <p>Ejecuta la aplicación operativa en tu equipo. GitHub Pages es solo documentación pública.</p>
+      </div>
+      <div class="code-panel" aria-label="Comandos de instalación local">
+        <pre><code>git clone https://github.com/&lt;usuario&gt;/cambiosTAR.git
+cd cambiosTAR
+python -m venv .venv
+source .venv/bin/activate        # Linux/macOS
+.venv\Scripts\activate           # Windows PowerShell
+pip install -r requirements.txt
+cp .env.example .env             # Windows: copy .env.example .env
+streamlit run app.py</code></pre>
+      </div>
+    </section>
+
+    <section class="section-shell protection" id="proteccion-datos">
+      <div class="section-heading align-left">
+        <p class="eyebrow">Privacidad</p>
+        <h2>Protección de datos</h2>
+      </div>
+      <div class="protection-grid">
+        <article><h3>Procesamiento local</h3><p>No se suben datos a servidores externos desde la aplicación. El análisis se realiza en la sesión local de Streamlit.</p></article>
+        <article><h3>Seudonimización</h3><p>El número de historia se transforma mediante SHA-256 y una clave local definida en <code>.env</code>.</p></article>
+        <article><h3>Gestión de secretos</h3><p>La clave debe almacenarse en <code>.env</code>. Ese archivo no debe subirse nunca a GitHub.</p></article>
+        <article><h3>Repositorio seguro</h3><p>Añade <code>.env</code>, datos reales y exportaciones sensibles a <code>.gitignore</code>. Los ejemplos deben ser siempre ficticios.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Herramienta desarrollada por Ramón Morillo para el análisis local de cambios de tratamiento antirretroviral.</p>
+    <strong>2026 · cambiosTAR</strong>
+  </footer>
+</body>
+</html>
