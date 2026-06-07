@@ -4,29 +4,37 @@
   const MOTIVOS = ['Fracaso viral', 'Efectos secundarios', 'Optimización', 'Interacciones', 'Otros'];
 
   const BASE_TAR = [
-    { nombre_mostrado: 'BIC/FTC/TAF (Biktarvy)', pauta_normalizada: 'BIC/FTC/TAF', componentes: ['bictegravir', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['Biktarvy', 'bictegravir', 'bictegravir/emtricitabina/tenofovir alafenamida', 'BIC FTC TAF', 'BIC-FTC-TAF'] },
-    { nombre_mostrado: 'DTG/3TC (Dovato)', pauta_normalizada: 'DTG/3TC', componentes: ['dolutegravir', 'lamivudina'], tipo: 'INSTI + ITIAN', sinonimos: ['Dovato', 'dolutegravir/lamivudina', 'DTG 3TC', 'DTG-3TC', '3TC/DTG', 'lamivudina/dolutegravir'] },
-    { nombre_mostrado: 'DTG/ABC/3TC (Triumeq)', pauta_normalizada: 'DTG/ABC/3TC', componentes: ['dolutegravir', 'abacavir', 'lamivudina'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['Triumeq', 'dolutegravir/abacavir/lamivudina', 'DTG ABC 3TC'] },
-    { nombre_mostrado: 'EVG/COBI/FTC/TAF (Genvoya)', pauta_normalizada: 'EVG/COBI/FTC/TAF', componentes: ['elvitegravir', 'cobicistat', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'INSTI potenciado + 2 ITIAN', sinonimos: ['Genvoya', 'elvitegravir/cobicistat/emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'EVG/COBI/FTC/TDF (Stribild)', pauta_normalizada: 'EVG/COBI/FTC/TDF', componentes: ['elvitegravir', 'cobicistat', 'emtricitabina', 'tenofovir disoproxilo'], tipo: 'INSTI potenciado + 2 ITIAN', sinonimos: ['Stribild', 'elvitegravir/cobicistat/emtricitabina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'DRV/COBI/FTC/TAF (Symtuza)', pauta_normalizada: 'DRV/COBI/FTC/TAF', componentes: ['darunavir', 'cobicistat', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'IP potenciado + 2 ITIAN', sinonimos: ['Symtuza', 'darunavir/cobicistat/emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'DRV/COBI (Rezolsta)', pauta_normalizada: 'DRV/COBI', componentes: ['darunavir', 'cobicistat'], tipo: 'IP potenciado', sinonimos: ['Rezolsta', 'darunavir/cobicistat'] },
-    { nombre_mostrado: 'DRV/r', pauta_normalizada: 'DRV/r', componentes: ['darunavir', 'ritonavir'], tipo: 'IP potenciado', sinonimos: ['darunavir/ritonavir', 'darunavir potenciado con ritonavir'] },
-    { nombre_mostrado: 'RPV/FTC/TAF (Odefsey)', pauta_normalizada: 'RPV/FTC/TAF', componentes: ['rilpivirina', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'ITINN + 2 ITIAN', sinonimos: ['Odefsey', 'rilpivirina/emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'RPV/FTC/TDF (Eviplera)', pauta_normalizada: 'RPV/FTC/TDF', componentes: ['rilpivirina', 'emtricitabina', 'tenofovir disoproxilo'], tipo: 'ITINN + 2 ITIAN', sinonimos: ['Eviplera', 'rilpivirina/emtricitabina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'DTG/RPV (Juluca)', pauta_normalizada: 'DTG/RPV', componentes: ['dolutegravir', 'rilpivirina'], tipo: 'INSTI + ITINN', sinonimos: ['Juluca', 'dolutegravir/rilpivirina'] },
-    { nombre_mostrado: 'CAB/RPV LA (Vocabria/Rekambys)', pauta_normalizada: 'CAB/RPV LA', componentes: ['cabotegravir long acting', 'rilpivirina long acting'], tipo: 'Inyectable larga duración', sinonimos: ['Vocabria/Rekambys', 'cabotegravir/rilpivirina', 'cabotegravir long acting rilpivirina long acting', 'CAB RPV', 'CAB+RPV'] },
-    { nombre_mostrado: 'RAL + FTC/TDF', pauta_normalizada: 'RAL + FTC/TDF', componentes: ['raltegravir', 'emtricitabina', 'tenofovir disoproxilo'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['raltegravir + emtricitabina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'RAL + FTC/TAF', pauta_normalizada: 'RAL + FTC/TAF', componentes: ['raltegravir', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['raltegravir + emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'DTG + FTC/TDF', pauta_normalizada: 'DTG + FTC/TDF', componentes: ['dolutegravir', 'emtricitabina', 'tenofovir disoproxilo'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['dolutegravir + emtricitabina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'DTG + FTC/TAF', pauta_normalizada: 'DTG + FTC/TAF', componentes: ['dolutegravir', 'emtricitabina', 'tenofovir alafenamida'], tipo: 'INSTI + 2 ITIAN', sinonimos: ['dolutegravir + emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'DOR/3TC/TDF (Delstrigo)', pauta_normalizada: 'DOR/3TC/TDF', componentes: ['doravirina', 'lamivudina', 'tenofovir disoproxilo'], tipo: 'ITINN + 2 ITIAN', sinonimos: ['Delstrigo', 'doravirina/lamivudina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'DOR + 3TC/TDF', pauta_normalizada: 'DOR + 3TC/TDF', componentes: ['doravirina', 'lamivudina', 'tenofovir disoproxilo'], tipo: 'ITINN + 2 ITIAN', sinonimos: ['Pifeltro + lamivudina/tenofovir disoproxilo'] },
-    { nombre_mostrado: 'EFV/FTC/TDF (Atripla)', pauta_normalizada: 'EFV/FTC/TDF', componentes: ['efavirenz', 'emtricitabina', 'tenofovir disoproxilo'], tipo: 'ITINN + 2 ITIAN', sinonimos: ['Atripla', 'efavirenz/emtricitabina/tenofovir disoproxilo'] }
+    { nombre_mostrado: 'BIC/FTC/TAF (Biktarvy)', pauta_normalizada: 'BIC/FTC/TAF', componentes: ['BIC', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Biktarvy', 'bictegravir', 'emtricitabina', 'tenofovir alafenamida', 'bictegravir/emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'DTG/3TC (Dovato)', pauta_normalizada: 'DTG/3TC', componentes: ['DTG', '3TC'], tipo: 'Combinación', sinonimos: ['Dovato', 'dolutegravir', 'lamivudina', 'dolutegravir/lamivudina'] },
+    { nombre_mostrado: 'DTG/ABC/3TC (Triumeq)', pauta_normalizada: 'DTG/ABC/3TC', componentes: ['DTG', 'ABC', '3TC'], tipo: 'Combinación', sinonimos: ['Triumeq', 'dolutegravir/abacavir/lamivudina', 'abacavir'] },
+    { nombre_mostrado: 'EVG/COBI/FTC/TAF (Genvoya)', pauta_normalizada: 'EVG/COBI/FTC/TAF', componentes: ['EVG', 'COBI', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Genvoya', 'elvitegravir/cobicistat/emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'EVG/COBI/FTC/TDF (Stribild)', pauta_normalizada: 'EVG/COBI/FTC/TDF', componentes: ['EVG', 'COBI', 'FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Stribild', 'elvitegravir/cobicistat/emtricitabina/tenofovir disoproxilo'] },
+    { nombre_mostrado: 'DRV/COBI/FTC/TAF (Symtuza)', pauta_normalizada: 'DRV/COBI/FTC/TAF', componentes: ['DRV', 'COBI', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Symtuza', 'darunavir/cobicistat/emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'RPV/FTC/TAF (Odefsey)', pauta_normalizada: 'RPV/FTC/TAF', componentes: ['RPV', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Odefsey', 'rilpivirina/emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'RPV/FTC/TDF (Eviplera)', pauta_normalizada: 'RPV/FTC/TDF', componentes: ['RPV', 'FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Eviplera', 'rilpivirina/emtricitabina/tenofovir disoproxilo'] },
+    { nombre_mostrado: 'DTG/RPV (Juluca)', pauta_normalizada: 'DTG/RPV', componentes: ['DTG', 'RPV'], tipo: 'Combinación', sinonimos: ['Juluca', 'dolutegravir/rilpivirina'] },
+    { nombre_mostrado: 'CAB/RPV LA (Vocabria + Rekambys)', pauta_normalizada: 'CAB/RPV LA', componentes: ['CAB', 'RPV'], tipo: 'Inyectable larga duración', sinonimos: ['Vocabria/Rekambys', 'Vocabria + Rekambys', 'cabotegravir/rilpivirina larga duración'] },
+    { nombre_mostrado: 'DOR/3TC/TDF (Delstrigo)', pauta_normalizada: 'DOR/3TC/TDF', componentes: ['DOR', '3TC', 'TDF'], tipo: 'Combinación', sinonimos: ['Delstrigo', 'doravirina/lamivudina/tenofovir disoproxilo'] },
+    { nombre_mostrado: 'EFV/FTC/TDF (Atripla)', pauta_normalizada: 'EFV/FTC/TDF', componentes: ['EFV', 'FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Atripla', 'efavirenz/emtricitabina/tenofovir disoproxilo'] },
+    { nombre_mostrado: 'FTC/TAF (Descovy)', pauta_normalizada: 'FTC/TAF', componentes: ['FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Descovy', 'emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'FTC/TDF (Truvada)', pauta_normalizada: 'FTC/TDF', componentes: ['FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Truvada', 'emtricitabina/tenofovir disoproxilo'] },
+    { nombre_mostrado: 'DRV/r', pauta_normalizada: 'DRV/r', componentes: ['DRV', 'r'], tipo: 'Combinación', sinonimos: ['Prezista + Norvir', 'darunavir/ritonavir'] },
+    { nombre_mostrado: 'DRV/COBI (Rezolsta)', pauta_normalizada: 'DRV/COBI', componentes: ['DRV', 'COBI'], tipo: 'Combinación', sinonimos: ['Rezolsta', 'darunavir/cobicistat'] }
   ];
 
+  const SINGLE_EQUIVALENCES = [
+    ['bictegravir', 'BIC'], ['emtricitabina', 'FTC'], ['tenofovir alafenamida', 'TAF'], ['tenofovir disoproxilo', 'TDF'], ['tenofovir disoproxil', 'TDF'],
+    ['dolutegravir', 'DTG'], ['lamivudina', '3TC'], ['abacavir', 'ABC'], ['elvitegravir', 'EVG'], ['cobicistat', 'COBI'],
+    ['darunavir', 'DRV'], ['ritonavir', 'r'], ['rilpivirina', 'RPV'], ['cabotegravir', 'CAB'], ['raltegravir', 'RAL'],
+    ['doravirina', 'DOR'], ['efavirenz', 'EFV'], ['nevirapina', 'NVP'], ['etravirina', 'ETR'], ['maraviroc', 'MVC'],
+    ['enfuvirtida', 'T20'], ['fostemsavir', 'FTR'], ['lenacapavir', 'LEN'], ['ibalizumab', 'IBA'],
+    ['tivicay', 'DTG'], ['prezista', 'DRV'], ['norvir', 'r'], ['isentress', 'RAL'], ['pifeltro', 'DOR'], ['vocabria', 'CAB'], ['rekambys', 'RPV']
+  ];
+  const COMBINATION_EQUIVALENCES = BASE_TAR.flatMap((entry) => [entry.nombre_mostrado, ...(entry.sinonimos || [])].map((name) => [name, entry.pauta_normalizada]));
+  const ORDER = ['BIC', 'DTG', 'CAB', 'RAL', 'EVG', 'DRV/r', 'DRV/COBI', 'DRV', 'COBI', 'r', 'DOR', 'RPV', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA', 'ABC', '3TC', 'FTC/TAF', 'FTC/TDF', 'FTC', 'TAF', 'TDF'];
+
   function normalizeText(value) {
-    return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[+/_-]+/g, ' ').replace(/\s+/g, ' ');
+    return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[+/_(),-]+/g, ' ').replace(/\s+/g, ' ');
   }
 
   function getCustomDictionary() {
@@ -70,10 +78,109 @@
 
   function normalizeTar(value) {
     const original = String(value || '').trim();
-    const matches = allTarEntries().map((entry) => ({ entry, score: scoreEntry(entry, original) })).filter((m) => m.score > 0).sort((a, b) => b.score - a.score);
-    if (!original) return { original, normalizado: '', reconocido: false, entry: null, matches: [] };
-    if (!matches.length) return { original, normalizado: original, reconocido: false, entry: null, matches: [] };
-    return { original, normalizado: matches[0].entry.pauta_normalizada, reconocido: true, entry: matches[0].entry, matches: matches.map((m) => m.entry) };
+    if (!original) return { original, normalizado: '', reconocido: false, entry: null, matches: [], advertencia: false };
+    const med = { nombre: original, principio_activo: original, fuente: 'Manual' };
+    const normalized = normalizarPautaTAR([med]);
+    return { original, normalizado: normalized.pauta || original, reconocido: normalized.reconocido, entry: normalized.matches?.[0] || null, matches: normalized.matches || [], advertencia: normalized.advertencia };
+  }
+
+  function tokenizePauta(pauta) {
+    return String(pauta || '').split(/\s*\+\s*/).flatMap((group) => group.split('/').map((v) => v.trim()).filter(Boolean));
+  }
+
+  function findCombinations(text) {
+    const q = normalizeText(text);
+    if (!q) return [];
+    const candidates = [...COMBINATION_EQUIVALENCES, ...getCustomDictionary().flatMap((entry) => [entry.nombre_mostrado, ...(entry.sinonimos || [])].filter(Boolean).map((name) => [name, entry.pauta_normalizada]))];
+    return Array.from(new Set(candidates.filter(([name]) => {
+      const n = normalizeText(name);
+      return n && (q === n || q.includes(n) || n.includes(q));
+    }).map(([, pauta]) => pauta)));
+  }
+
+  function findSingleComponents(text) {
+    const q = normalizeText(text);
+    if (!q) return [];
+    const found = [];
+    SINGLE_EQUIVALENCES.forEach(([name, code]) => {
+      const n = normalizeText(name);
+      if (n && (q === n || q.includes(n))) found.push(code);
+    });
+    tokenizePauta(text).forEach((token) => {
+      const upper = token === 'r' ? 'r' : token.toUpperCase();
+      if (ORDER.includes(upper) || ['BIC', 'FTC', 'TAF', 'TDF', 'DTG', '3TC', 'ABC', 'EVG', 'COBI', 'DRV', 'RPV', 'CAB', 'RAL', 'DOR', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA'].includes(upper)) found.push(upper);
+    });
+    return found;
+  }
+
+  function orderGroups(groups) {
+    const rank = (group) => {
+      const key = group.join('/');
+      const pos = ORDER.indexOf(key);
+      if (pos >= 0) return pos;
+      return Math.min(...group.map((c) => ORDER.indexOf(c)).filter((i) => i >= 0), 999);
+    };
+    return groups.sort((a, b) => rank(a) - rank(b)).map((group) => group.join('/'));
+  }
+
+  function normalizarPautaTAR(medicamentosSeleccionados) {
+    const meds = Array.isArray(medicamentosSeleccionados) ? medicamentosSeleccionados : [];
+    const groups = [];
+    const matches = [];
+    const unmatched = [];
+    const combinedText = meds.map((m) => [m.nombre, m.principio_activo, m.pauta].filter(Boolean).join(' ')).join(' ');
+    const hasVocabria = /vocabria|cabotegravir/i.test(combinedText);
+    const hasRekambys = /rekambys|rilpivirina/i.test(combinedText);
+
+    meds.forEach((med) => {
+      const text = [med.nombre, med.principio_activo, med.pauta].filter(Boolean).join(' ');
+      const combinations = findCombinations(text);
+      const components = findSingleComponents(text);
+      combinations.forEach((combination) => {
+        groups.push(Array.from(new Set(tokenizePauta(combination))));
+        matches.push({ nombre_mostrado: med.nombre || med.principio_activo || combination, pauta_normalizada: combination });
+      });
+      if (components.length) {
+        groups.push(Array.from(new Set(components)));
+        matches.push({ nombre_mostrado: med.nombre || med.principio_activo || components.join('/'), pauta_normalizada: components.join('/') });
+      }
+      if (!combinations.length && !components.length && String(text).trim()) unmatched.push(text);
+    });
+
+    if (hasVocabria && hasRekambys) return { pauta: 'CAB/RPV LA', reconocido: unmatched.length === 0, advertencia: unmatched.length > 0, noReconocidos: unmatched, matches };
+
+    const flat = Array.from(new Set(groups.flat()));
+    if (flat.includes('DRV') && flat.includes('r')) {
+      groups.push(['DRV', 'r']);
+      flat.splice(flat.indexOf('DRV'), 1);
+      flat.splice(flat.indexOf('r'), 1);
+    } else if (flat.includes('DRV') && flat.includes('COBI')) {
+      groups.push(['DRV', 'COBI']);
+      flat.splice(flat.indexOf('DRV'), 1);
+      flat.splice(flat.indexOf('COBI'), 1);
+    }
+    if (flat.includes('FTC') && flat.includes('TAF')) {
+      groups.push(['FTC', 'TAF']); flat.splice(flat.indexOf('FTC'), 1); flat.splice(flat.indexOf('TAF'), 1);
+    } else if (flat.includes('FTC') && flat.includes('TDF')) {
+      groups.push(['FTC', 'TDF']); flat.splice(flat.indexOf('FTC'), 1); flat.splice(flat.indexOf('TDF'), 1);
+    }
+
+    const finalGroups = [];
+    groups.forEach((group) => {
+      const key = group.join('/');
+      if (key === 'DRV/r' || key === 'DRV/COBI' || key === 'FTC/TAF' || key === 'FTC/TDF' || group.length > 1) finalGroups.push(group);
+    });
+    flat.forEach((code) => finalGroups.push([code]));
+    const seen = new Set();
+    const deduped = finalGroups.filter((group) => {
+      const key = group.join('/');
+      if (seen.has(key) || group.every((component) => seen.has(component))) return false;
+      group.forEach((component) => seen.add(component));
+      seen.add(key);
+      return true;
+    });
+    const pauta = orderGroups(deduped).join(' + ');
+    return { pauta, reconocido: Boolean(pauta) && unmatched.length === 0, advertencia: !pauta || unmatched.length > 0, noReconocidos: unmatched, matches };
   }
 
   function addCustomTarEntry({ texto_introducido, pauta_normalizada, componentes, tipo, sinonimos }) {
@@ -82,13 +189,10 @@
     if (!normalized || !introduced) throw new Error('Indique texto introducido y pauta normalizada.');
     const entries = getCustomDictionary().filter((e) => e.pauta_normalizada !== normalized);
     entries.push({
-      nombre_mostrado: `${normalized} (manual)`,
-      pauta_normalizada: normalized,
-      componentes: Array.isArray(componentes) ? componentes : String(componentes || '').split(/[,+/]/).map((v) => v.trim()).filter(Boolean),
-      tipo: tipo || 'Manual',
-      sinonimos: Array.from(new Set([introduced, normalized, ...(sinonimos || [])].filter(Boolean))),
-      origen: 'diccionario local personalizado',
-      fecha_creacion: new Date().toISOString()
+      nombre_mostrado: `${normalized} (manual)`, pauta_normalizada: normalized,
+      componentes: Array.isArray(componentes) ? componentes : String(componentes || normalized).split(/[,+/]/).map((v) => v.trim()).filter(Boolean),
+      tipo: tipo || 'Manual', sinonimos: Array.from(new Set([introduced, normalized, ...(sinonimos || [])].filter(Boolean))),
+      origen: 'diccionario local personalizado', fecha_creacion: new Date().toISOString()
     });
     saveCustomDictionary(entries);
     return entries;
@@ -105,23 +209,37 @@
     return { motivo_normalizado: 'Otros', motivo_detalle: raw, motivo_original: raw, clasificado: false };
   }
 
-  function isCimaEnabled() { return localStorage.getItem(CIMA_ENABLED_KEY) === 'true'; }
+  function isCimaEnabled() { return localStorage.getItem(CIMA_ENABLED_KEY) !== 'false'; }
   function setCimaEnabled(enabled) { localStorage.setItem(CIMA_ENABLED_KEY, enabled ? 'true' : 'false'); }
 
-  async function searchCIMA(text) {
-    if (!isCimaEnabled()) return { enabled: false, results: [], message: 'Búsqueda CIMA desactivada. La normalización usa el diccionario local.' };
+  function mapCimaItem(item) {
+    const activeValue = item.pactivos || item.principiosActivos || item.principioActivo || '';
+    const pactivos = Array.isArray(activeValue) ? activeValue.map((active) => typeof active === 'string' ? active : (active.nombre || active.principioActivo || active.pactivo || '')).filter(Boolean).join(', ') : activeValue;
+    return {
+      nombre: item.nombre || item.nomMedicamento || item.descripcion || '',
+      codigo_nacional: item.cn || item.codigoNacional || item.nregistro || item.nroRegistro || '',
+      principio_activo: pactivos,
+      forma_farmaceutica: item.formaFarmaceutica || item.forma || '',
+      laboratorio: item.labtitular || item.laboratorio || item.titular || '',
+      fuente: 'CIMA'
+    };
+  }
+
+  async function buscarMedicamentoCIMA(text) {
     const query = String(text || '').trim();
-    if (query.length < 3) return { enabled: true, results: [], message: 'Escriba al menos 3 caracteres para buscar en CIMA.' };
+    if (query.length < 3) return { results: [], message: 'Escriba al menos 3 caracteres para buscar en CIMA.' };
     try {
       const response = await fetch(`https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(query)}&pagina=1`, { method: 'GET' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      const items = data.resultados || data || [];
-      return { enabled: true, results: items.slice(0, 5), message: 'Resultados CIMA recibidos. Se usan solo como ayuda; el guardado depende del diccionario local.' };
+      const items = Array.isArray(data.resultados) ? data.resultados : (Array.isArray(data) ? data : []);
+      return { results: items.slice(0, 10).map(mapCimaItem).filter((item) => item.nombre || item.principio_activo), message: 'Resultados CIMA recibidos. Seleccione uno o use entrada manual si no aparece.' };
     } catch (error) {
-      return { enabled: true, results: [], message: `CIMA no disponible desde el navegador (${error.message}). Se mantiene el diccionario local.` };
+      return { results: [], message: 'No se ha podido consultar CIMA. Puede introducir el medicamento manualmente.', error: error.message };
     }
   }
 
-  window.CambiosNormalize = { MOTIVOS, BASE_TAR, normalizeText, allTarEntries, normalizeTar, getCustomDictionary, saveCustomDictionary, addCustomTarEntry, classifyReason, isCimaEnabled, setCimaEnabled, searchCIMA, clearLocalNormalizationConfig };
+  const searchCIMA = buscarMedicamentoCIMA;
+
+  window.CambiosNormalize = { MOTIVOS, BASE_TAR, normalizeText, allTarEntries, normalizeTar, normalizarPautaTAR, getCustomDictionary, saveCustomDictionary, addCustomTarEntry, classifyReason, isCimaEnabled, setCimaEnabled, buscarMedicamentoCIMA, searchCIMA, clearLocalNormalizationConfig };
 }());

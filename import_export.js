@@ -33,7 +33,7 @@
     return '';
   }
 
-  function deriveRecord({ fecha, patient_id, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado }) {
+  function deriveRecord({ fecha, patient_id, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado, tar_antiguo_medicamentos, tar_nuevo_medicamentos, tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual }) {
     const date = toDateString(fecha);
     const d = new Date(`${date}T00:00:00`);
     const year = d.getUTCFullYear();
@@ -41,8 +41,10 @@
     const quarter = Math.floor((month - 1) / 3) + 1;
     const oldOriginal = String(tar_antiguo_original ?? tar_antiguo ?? '').trim();
     const newOriginal = String(tar_nuevo_original ?? tar_nuevo ?? '').trim();
-    const oldNorm = tar_antiguo_normalizado ? { original: oldOriginal, normalizado: tar_antiguo_normalizado, reconocido: true } : window.CambiosNormalize.normalizeTar(oldOriginal);
-    const newNorm = tar_nuevo_normalizado ? { original: newOriginal, normalizado: tar_nuevo_normalizado, reconocido: true } : window.CambiosNormalize.normalizeTar(newOriginal);
+    const oldAuto = tar_antiguo_medicamentos?.length ? window.CambiosNormalize.normalizarPautaTAR(tar_antiguo_medicamentos) : null;
+    const newAuto = tar_nuevo_medicamentos?.length ? window.CambiosNormalize.normalizarPautaTAR(tar_nuevo_medicamentos) : null;
+    const oldNorm = tar_antiguo_normalizado ? { original: oldOriginal, normalizado: tar_antiguo_normalizado, reconocido: Boolean(tar_antiguo_normalizacion_manual) || !oldAuto?.advertencia, advertencia: Boolean(oldAuto?.advertencia) } : (oldAuto ? { original: oldOriginal, normalizado: oldAuto.pauta, reconocido: oldAuto.reconocido, advertencia: oldAuto.advertencia } : window.CambiosNormalize.normalizeTar(oldOriginal));
+    const newNorm = tar_nuevo_normalizado ? { original: newOriginal, normalizado: tar_nuevo_normalizado, reconocido: Boolean(tar_nuevo_normalizacion_manual) || !newAuto?.advertencia, advertencia: Boolean(newAuto?.advertencia) } : (newAuto ? { original: newOriginal, normalizado: newAuto.pauta, reconocido: newAuto.reconocido, advertencia: newAuto.advertencia } : window.CambiosNormalize.normalizeTar(newOriginal));
     const motivo = String(motivo_original || motivo_detalle || motivo_normalizado || '').trim();
     const classified = motivo_normalizado ? { motivo_normalizado, motivo_detalle: motivo_detalle || '', motivo_original: motivo, clasificado: true } : window.CambiosNormalize.classifyReason(motivo);
     const normalizedReason = window.CambiosNormalize.MOTIVOS.includes(classified.motivo_normalizado) ? classified.motivo_normalizado : 'Otros';
@@ -51,10 +53,14 @@
       id: id || (crypto.randomUUID ? crypto.randomUUID() : `rec-${Date.now()}-${Math.random()}`),
       fecha: date,
       patient_id,
+      tar_antiguo_medicamentos: Array.isArray(tar_antiguo_medicamentos) ? tar_antiguo_medicamentos : (oldOriginal ? [{ nombre: oldOriginal, fuente: 'Importación/manual' }] : []),
       tar_antiguo_original: oldOriginal,
       tar_antiguo_normalizado: oldNorm.normalizado,
+      tar_antiguo_normalizacion_manual: Boolean(tar_antiguo_normalizacion_manual),
+      tar_nuevo_medicamentos: Array.isArray(tar_nuevo_medicamentos) ? tar_nuevo_medicamentos : (newOriginal ? [{ nombre: newOriginal, fuente: 'Importación/manual' }] : []),
       tar_nuevo_original: newOriginal,
       tar_nuevo_normalizado: newNorm.normalizado,
+      tar_nuevo_normalizacion_manual: Boolean(tar_nuevo_normalizacion_manual),
       tar_antiguo: oldNorm.normalizado,
       tar_nuevo: newNorm.normalizado,
       motivo_original: motivo,
@@ -94,6 +100,10 @@
       anio: r.anio,
       mes: r.mes,
       trimestre: r.trimestre,
+      tar_antiguo_medicamentos: JSON.stringify(r.tar_antiguo_medicamentos || []),
+      tar_nuevo_medicamentos: JSON.stringify(r.tar_nuevo_medicamentos || []),
+      tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual ? 'Sí' : 'No',
+      tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual ? 'Sí' : 'No',
       pendiente_revision: (!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado) ? 'Sí' : 'No'
     }));
   }
