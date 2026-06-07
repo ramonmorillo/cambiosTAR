@@ -1,5 +1,5 @@
 (function () {
-  const state = { records: [], filtered: [], excelRows: [], importValidated: [], lastReport: null };
+  const state = { records: [], filtered: [], excelRows: [], importValidated: [], lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
@@ -22,7 +22,7 @@
   }
 
   async function refresh() {
-    state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion }))); 
+    state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion })));
     applyFilters(); renderDashboard(); renderPatientOptions();
   }
 
@@ -32,7 +32,7 @@
 
   async function recordFromClinical(raw, origen) {
     const patientId = raw.patient_id || await window.CambiosCrypto.pseudonymize(raw.historia);
-    return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, origen, id: raw.id });
+    return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, tar_antiguo_medicamentos: raw.tar_antiguo_medicamentos, tar_nuevo_medicamentos: raw.tar_nuevo_medicamentos, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: raw.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: raw.tar_nuevo_normalizacion_manual, origen, id: raw.id });
   }
 
   function duplicateSet(records = state.records) { return new Set(records.map(window.CambiosIO.duplicateKey)); }
@@ -42,51 +42,102 @@
     try {
       const motivo = $('reason-normalized').value;
       const detail = $('reason-detail').value.trim();
+      if (!$('change-date').value) throw new Error('Debe indicar la fecha del cambio.');
+      if (!$('clinical-id').value.trim()) throw new Error('Debe indicar el número de historia clínica.');
+      if (!state.tarBuilders.old.medicamentos.length) throw new Error('Añada al menos un medicamento al TAR antiguo.');
+      if (!state.tarBuilders.new.medicamentos.length) throw new Error('Añada al menos un medicamento al TAR nuevo.');
+      if (!motivo) throw new Error('Debe seleccionar el motivo del cambio.');
       if (motivo === 'Otros' && !detail) throw new Error('Debe especificar el motivo cuando seleccione Otros.');
-      const raw = { fecha: $('change-date').value, historia: $('clinical-id').value, tar_antiguo: $('old-tar').value, tar_nuevo: $('new-tar').value, motivo: detail || motivo, motivo_normalizado: motivo, motivo_detalle: detail };
+      const oldManual = $('old-normalized-manual').value.trim();
+      const newManual = $('new-normalized-manual').value.trim();
+      const raw = {
+        fecha: $('change-date').value,
+        historia: $('clinical-id').value,
+        tar_antiguo: originalFromMeds(state.tarBuilders.old.medicamentos),
+        tar_nuevo: originalFromMeds(state.tarBuilders.new.medicamentos),
+        tar_antiguo_medicamentos: state.tarBuilders.old.medicamentos,
+        tar_nuevo_medicamentos: state.tarBuilders.new.medicamentos,
+        tar_antiguo_normalizado: oldManual,
+        tar_nuevo_normalizado: newManual,
+        tar_antiguo_normalizacion_manual: oldManual !== state.tarBuilders.old.autoPauta,
+        tar_nuevo_normalizacion_manual: newManual !== state.tarBuilders.new.autoPauta,
+        motivo: detail || motivo,
+        motivo_normalizado: motivo,
+        motivo_detalle: detail
+      };
       const record = await recordFromClinical(raw, 'registro manual');
       if (!validInputRecord(record)) throw new Error('Revise los campos obligatorios y la fecha.');
       if (duplicateSet().has(window.CambiosIO.duplicateKey(record))) throw new Error('Ya existe un registro exacto con ese patient_id, fecha, TAR antiguo, TAR nuevo y motivo.');
       await window.CambiosStorage.saveRecord(record);
       $('clinical-id').value = '';
-      $('record-form').reset(); $('change-date').value = new Date().toISOString().slice(0, 10); updateTarPreview('old-tar'); updateTarPreview('new-tar'); toggleReasonDetail();
+      $('record-form').reset(); $('change-date').value = new Date().toISOString().slice(0, 10); resetTarBuilders(); toggleReasonDetail();
       $('record-message').textContent = `Cambio guardado. Patient ID: ${record.patient_id}. El número de historia no se ha guardado en claro.`;
       toast('Registro guardado y dashboard actualizado.');
       await refresh();
     } catch (error) { $('record-message').textContent = error.message; toast(error.message, 'error'); }
   }
 
-
-  function renderTarDatalist() {
-    $('tar-options').innerHTML = window.CambiosNormalize.allTarEntries().flatMap((entry) => [entry.pauta_normalizada, entry.nombre_mostrado, ...(entry.sinonimos || [])]).filter(Boolean).map((v) => `<option value="${escapeHtml(v)}"></option>`).join('');
+  function originalFromMeds(meds) {
+    return meds.map((m) => m.nombre || m.principio_activo || m.pauta).filter(Boolean).join(' + ');
   }
 
-  function updateTarPreview(inputId) {
-    const result = window.CambiosNormalize.normalizeTar($(inputId).value);
-    const prefix = inputId === 'old-tar' ? 'old' : 'new';
-    $(`${prefix}-tar-normalized`).textContent = `Se guardará como: ${result.normalizado || '—'}`;
-    $(`${prefix}-tar-warning`).classList.toggle('hidden', !result.original || result.reconocido);
-    if (result.original && !result.reconocido) $('manual-tar-text').value = result.original;
+  function medicationId(med) {
+    return [med.codigo_nacional, med.nombre, med.principio_activo].filter(Boolean).join('|').toLowerCase();
   }
 
-  function toggleReasonDetail() {
-    const isOther = $('reason-normalized').value === 'Otros';
-    $('reason-detail-wrap').classList.toggle('hidden', !isOther);
-    $('reason-detail').required = isOther;
-    if (!isOther) $('reason-detail').value = '';
+  function renderTarBuilder(kind) {
+    const builder = state.tarBuilders[kind];
+    const prefix = kind === 'old' ? 'old' : 'new';
+    const label = kind === 'old' ? 'TAR antiguo' : 'TAR nuevo';
+    const normalized = window.CambiosNormalize.normalizarPautaTAR(builder.medicamentos);
+    builder.autoPauta = normalized.pauta || '';
+    const manualInput = $(`${prefix}-normalized-manual`);
+    if (!manualInput.dataset.manualEdited) manualInput.value = builder.autoPauta;
+    $(`${prefix}-normalization-warning`).classList.toggle('hidden', !normalized.advertencia);
+    $(`${prefix}-selected`).innerHTML = builder.medicamentos.length ? builder.medicamentos.map((med, index) => `<div class="selected-med"><div><strong>${escapeHtml(med.nombre || 'Medicamento manual')}</strong><small>${escapeHtml([med.principio_activo, med.forma_farmaceutica, med.laboratorio, med.codigo_nacional ? `CN: ${med.codigo_nacional}` : '', med.fuente].filter(Boolean).join(' · '))}</small></div><button class="link-btn danger-text" type="button" data-remove-med="${kind}" data-index="${index}">Eliminar</button></div>`).join('') : `<p class="small muted">Sin medicamentos seleccionados para ${label}.</p>`;
   }
 
-  function refreshCimaStatus(message) {
-    $('cima-enabled').checked = window.CambiosNormalize.isCimaEnabled();
-    $('cima-status').textContent = message || (window.CambiosNormalize.isCimaEnabled() ? 'Activada. Solo se enviará el texto del medicamento a CIMA/AEMPS.' : 'Desactivada. La herramienta funciona con diccionario local.');
+  function resetTarBuilders() {
+    state.tarBuilders.old = { medicamentos: [], autoPauta: '' };
+    state.tarBuilders.new = { medicamentos: [], autoPauta: '' };
+    ['old', 'new'].forEach((kind) => {
+      $(`${kind}-cima-results`).innerHTML = '';
+      $(`${kind}-cima-message`).textContent = 'Busque y añada uno o varios medicamentos.';
+      const manualInput = $(`${kind}-normalized-manual`);
+      manualInput.dataset.manualEdited = '';
+      renderTarBuilder(kind);
+    });
   }
 
-  async function maybeSearchCima(inputId) {
-    if (!window.CambiosNormalize.isCimaEnabled()) return;
-    const result = await window.CambiosNormalize.searchCIMA($(inputId).value);
-    const names = result.results.map((item) => item.nombre || item.pactivos).filter(Boolean).slice(0, 3).join(' · ');
-    refreshCimaStatus(names ? `${result.message} Coincidencias: ${names}` : result.message);
+  function addMedication(kind, medication) {
+    const clean = {
+      nombre: String(medication.nombre || '').trim(), codigo_nacional: String(medication.codigo_nacional || '').trim(),
+      principio_activo: String(medication.principio_activo || medication.pauta || '').trim(), forma_farmaceutica: String(medication.forma_farmaceutica || '').trim(),
+      laboratorio: String(medication.laboratorio || '').trim(), fuente: medication.fuente || 'Manual'
+    };
+    if (!clean.nombre && !clean.principio_activo) throw new Error('Indique nombre o principio activo/pauta del medicamento.');
+    const id = medicationId(clean);
+    if (state.tarBuilders[kind].medicamentos.some((med) => medicationId(med) === id)) throw new Error('Este medicamento ya está añadido a la pauta.');
+    state.tarBuilders[kind].medicamentos.push(clean);
+    $(`${kind}-normalized-manual`).dataset.manualEdited = '';
+    renderTarBuilder(kind);
   }
+
+  async function searchCimaFor(kind) {
+    const prefix = kind === 'old' ? 'old' : 'new';
+    const addLabel = kind === 'old' ? 'Añadir al TAR antiguo' : 'Añadir al TAR nuevo';
+    $(`${prefix}-cima-message`).textContent = 'Consultando CIMA/AEMPS…';
+    $(`${prefix}-cima-results`).innerHTML = '';
+    const result = await window.CambiosNormalize.buscarMedicamentoCIMA($(`${prefix}-cima-query`).value);
+    $(`${prefix}-cima-message`).textContent = result.message;
+    if (!result.results.length) {
+      $(`${prefix}-manual-panel`).classList.remove('hidden');
+      return;
+    }
+    $(`${prefix}-cima-results`).innerHTML = result.results.map((item, index) => `<article class="cima-result-card"><div><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml([item.principio_activo, item.forma_farmaceutica, item.laboratorio, item.codigo_nacional ? `CN: ${item.codigo_nacional}` : ''].filter(Boolean).join(' · '))}</small></div><button class="btn secondary" type="button" data-add-cima="${kind}" data-index="${index}">${addLabel}</button></article>`).join('');
+    $(`${prefix}-cima-results`).dataset.results = JSON.stringify(result.results);
+  }
+
 
   function renderDashboard() {
     const records = state.records;
@@ -214,7 +265,7 @@
       const records = Array.isArray(data) ? data : data.records;
       if (!Array.isArray(records)) throw new Error('Backup JSON no válido.');
       if (Array.isArray(data.custom_tar_dictionary)) window.CambiosNormalize.saveCustomDictionary(data.custom_tar_dictionary);
-      const sanitized = records.map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen || 'backup importado', id: r.id, fecha_creacion: r.fecha_creacion }));
+      const sanitized = records.map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen || 'backup importado', id: r.id, fecha_creacion: r.fecha_creacion }));
       await window.CambiosStorage.bulkSave(sanitized);
       toast(`Backup importado: ${sanitized.length} registros.`); await refresh();
     } catch (error) { toast(error.message, 'error'); }
@@ -224,11 +275,20 @@
     document.querySelectorAll('[data-section-link]').forEach((el) => el.addEventListener('click', (e) => { e.preventDefault(); showSection(el.dataset.sectionLink); }));
     $('menu-toggle').addEventListener('click', () => $('top-nav').classList.toggle('open'));
     $('record-form').addEventListener('submit', handleManualSubmit);
-    $('record-form').addEventListener('reset', () => setTimeout(() => { updateTarPreview('old-tar'); updateTarPreview('new-tar'); toggleReasonDetail(); }, 0));
-    ['old-tar', 'new-tar'].forEach((id) => { $(id).addEventListener('input', () => updateTarPreview(id)); $(id).addEventListener('change', () => maybeSearchCima(id)); });
+    $('record-form').addEventListener('reset', () => setTimeout(() => { resetTarBuilders(); toggleReasonDetail(); }, 0));
+    ['old', 'new'].forEach((kind) => {
+      $(`${kind}-cima-search`).addEventListener('click', () => searchCimaFor(kind));
+      $(`${kind}-manual-toggle`).addEventListener('click', () => $(`${kind}-manual-panel`).classList.toggle('hidden'));
+      $(`${kind}-manual-add`).addEventListener('click', () => { try { addMedication(kind, { nombre: $(`${kind}-manual-name`).value, principio_activo: $(`${kind}-manual-active`).value, fuente: 'Manual' }); $(`${kind}-manual-name`).value = ''; $(`${kind}-manual-active`).value = ''; } catch (error) { toast(error.message, 'error'); } });
+      $(`${kind}-normalized-manual`).addEventListener('input', (e) => { e.target.dataset.manualEdited = e.target.value !== state.tarBuilders[kind].autoPauta ? 'true' : ''; });
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.dataset.addCima) {
+        try { const results = JSON.parse($(`${e.target.dataset.addCima}-cima-results`).dataset.results || '[]'); addMedication(e.target.dataset.addCima, results[Number(e.target.dataset.index)]); } catch (error) { toast(error.message, 'error'); }
+      }
+      if (e.target.dataset.removeMed) { state.tarBuilders[e.target.dataset.removeMed].medicamentos.splice(Number(e.target.dataset.index), 1); $(`${e.target.dataset.removeMed}-normalized-manual`).dataset.manualEdited = ''; renderTarBuilder(e.target.dataset.removeMed); }
+    });
     $('reason-normalized').addEventListener('change', toggleReasonDetail);
-    $('add-manual-tar-btn').addEventListener('click', () => { try { window.CambiosNormalize.addCustomTarEntry({ texto_introducido: $('manual-tar-text').value, pauta_normalizada: $('manual-tar-normalized').value }); renderTarDatalist(); updateTarPreview('old-tar'); updateTarPreview('new-tar'); $('manual-tar-text').value = ''; $('manual-tar-normalized').value = ''; toast('Entrada TAR manual guardada en el diccionario local.'); } catch (error) { toast(error.message, 'error'); } });
-    $('cima-enabled').addEventListener('change', () => { window.CambiosNormalize.setCimaEnabled($('cima-enabled').checked); refreshCimaStatus(); });
     $('save-key-btn').addEventListener('click', () => { if (window.CambiosCrypto.setKey($('security-key').value, $('save-key').checked)) { $('security-key').value = ''; $('key-status').textContent = 'Clave configurada. No se mostrará en exportaciones.'; toast('Clave configurada.'); } else toast('Introduzca una clave válida.', 'error'); });
     $('check-key-btn').addEventListener('click', () => toast(window.CambiosCrypto.hasKey() ? 'Hay una clave configurada.' : 'No hay clave configurada.', window.CambiosCrypto.hasKey() ? 'ok' : 'error'));
     $('clear-key-btn').addEventListener('click', () => { window.CambiosCrypto.clearKey(); toast('Clave olvidada en este navegador.'); });
@@ -254,7 +314,7 @@
 
   function initDates() {
     $('change-date').value = new Date().toISOString().slice(0, 10);
-    renderTarDatalist(); updateTarPreview('old-tar'); updateTarPreview('new-tar'); toggleReasonDetail(); refreshCimaStatus();
+    resetTarBuilders(); toggleReasonDetail();
     $('report-year').value = new Date().getFullYear();
     $('report-month').innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('');
     $('report-month').value = new Date().getMonth() + 1;

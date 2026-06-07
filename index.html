@@ -70,7 +70,7 @@
         <article class="card">
           <h3>¿Dónde se guardan los datos?</h3>
           <p>Los registros se almacenan en IndexedDB dentro de este navegador. Si IndexedDB no estuviera disponible, la aplicación usa localStorage como respaldo. No se suben archivos ni registros a ningún servidor.</p>
-          <div class="alert info">Si se activa la búsqueda CIMA, solo se consulta el nombre del medicamento escrito en los campos TAR. Nunca se envían números de historia clínica ni datos de pacientes.</div>
+          <div class="alert info">Al usar la búsqueda CIMA, solo se consulta el texto del medicamento. Nunca se envían números de historia clínica ni datos de pacientes.</div>
           <ul class="check-list">
             <li>La copia de seguridad depende del usuario.</li>
             <li>No introduzca nombres, DNI, teléfonos, direcciones ni texto libre identificativo.</li>
@@ -105,24 +105,62 @@
         <div class="form-grid">
           <label>Fecha del cambio <input type="date" id="change-date" required /></label>
           <label>Número de historia clínica <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
-          <label>TAR antiguo <input type="text" id="old-tar" required list="tar-options" placeholder="Ej.: Biktarvy o BIC/FTC/TAF" autocomplete="off" /><span id="old-tar-normalized" class="field-help">Se guardará como: —</span><span id="old-tar-warning" class="field-warning hidden">Tratamiento no reconocido. Puedes guardarlo como entrada manual normalizada.</span></label>
-          <label>TAR nuevo <input type="text" id="new-tar" required list="tar-options" placeholder="Ej.: BIC/FTC/TAF" autocomplete="off" /><span id="new-tar-normalized" class="field-help">Se guardará como: —</span><span id="new-tar-warning" class="field-warning hidden">Tratamiento no reconocido. Puedes guardarlo como entrada manual normalizada.</span></label>
-          <datalist id="tar-options"></datalist>
-          <div class="full alert info">Utiliza nombres comerciales o combinaciones. La herramienta intentará guardar una pauta normalizada para facilitar el análisis.</div>
-          <fieldset class="full manual-dict-box">
-            <legend>Entrada manual normalizada</legend>
-            <p class="small">Si un TAR no existe en el diccionario, añádelo al diccionario local del navegador sin interrumpir el registro.</p>
-            <div class="form-grid compact">
-              <label>Texto introducido <input type="text" id="manual-tar-text" placeholder="Ej.: pauta escrita por el usuario" /></label>
-              <label>Pauta normalizada <input type="text" id="manual-tar-normalized" placeholder="Ej.: ABC/3TC + DTG" /></label>
-            </div>
-            <button class="btn secondary" type="button" id="add-manual-tar-btn">Guardar en diccionario local</button>
-          </fieldset>
           <div class="full alert info cima-box">
-            <label class="checkbox"><input id="cima-enabled" type="checkbox" /> Activar búsqueda CIMA opcional</label>
-            <p>Búsqueda CIMA opcional: solo se consulta el texto del medicamento, nunca datos del paciente.</p>
-            <p id="cima-status" class="small">Desactivada. La herramienta funciona con diccionario local.</p>
+            <strong>Búsqueda CIMA/AEMPS:</strong> Solo se consulta el texto del medicamento. Nunca se envían datos del paciente.
+            <p id="cima-status" class="small">La herramienta no depende de CIMA: si la consulta falla, puede añadir medicamentos manualmente.</p>
           </div>
+
+          <fieldset class="full tar-builder" data-tar-builder="old">
+            <legend>Constructor de TAR antiguo</legend>
+            <label>Buscar medicamento en CIMA para TAR antiguo
+              <input type="text" id="old-cima-query" placeholder="Ej.: Biktarvy, Tivicay, darunavir" autocomplete="off" />
+            </label>
+            <div class="button-row compact-row">
+              <button class="btn secondary" type="button" id="old-cima-search">Buscar en CIMA</button>
+              <button class="btn ghost" type="button" id="old-manual-toggle">Introducir manualmente</button>
+            </div>
+            <div id="old-cima-message" class="small muted">Busque y añada uno o varios medicamentos.</div>
+            <div id="old-cima-results" class="cima-results"></div>
+            <div id="old-manual-panel" class="manual-panel hidden">
+              <div class="form-grid compact">
+                <label>Nombre del medicamento <input type="text" id="old-manual-name" placeholder="Ej.: Descovy" /></label>
+                <label>Principio activo o pauta <input type="text" id="old-manual-active" placeholder="Ej.: emtricitabina/tenofovir alafenamida o FTC/TAF" /></label>
+              </div>
+              <button class="btn secondary" type="button" id="old-manual-add">Añadir al TAR antiguo</button>
+            </div>
+            <h4>Medicamentos seleccionados para TAR antiguo</h4>
+            <div id="old-selected" class="selected-meds"></div>
+            <label>Pauta normalizada TAR antiguo
+              <input type="text" id="old-normalized-manual" placeholder="Se calcula automáticamente; puede corregirse manualmente" />
+            </label>
+            <p id="old-normalization-warning" class="field-warning hidden">No se ha podido normalizar completamente la pauta. Revise manualmente.</p>
+          </fieldset>
+
+          <fieldset class="full tar-builder" data-tar-builder="new">
+            <legend>Constructor de TAR nuevo</legend>
+            <label>Buscar medicamento en CIMA para TAR nuevo
+              <input type="text" id="new-cima-query" placeholder="Ej.: Dovato, Descovy, rilpivirina" autocomplete="off" />
+            </label>
+            <div class="button-row compact-row">
+              <button class="btn secondary" type="button" id="new-cima-search">Buscar en CIMA</button>
+              <button class="btn ghost" type="button" id="new-manual-toggle">Introducir manualmente</button>
+            </div>
+            <div id="new-cima-message" class="small muted">Busque y añada uno o varios medicamentos.</div>
+            <div id="new-cima-results" class="cima-results"></div>
+            <div id="new-manual-panel" class="manual-panel hidden">
+              <div class="form-grid compact">
+                <label>Nombre del medicamento <input type="text" id="new-manual-name" placeholder="Ej.: Truvada" /></label>
+                <label>Principio activo o pauta <input type="text" id="new-manual-active" placeholder="Ej.: emtricitabina/tenofovir disoproxilo o FTC/TDF" /></label>
+              </div>
+              <button class="btn secondary" type="button" id="new-manual-add">Añadir al TAR nuevo</button>
+            </div>
+            <h4>Medicamentos seleccionados para TAR nuevo</h4>
+            <div id="new-selected" class="selected-meds"></div>
+            <label>Pauta normalizada TAR nuevo
+              <input type="text" id="new-normalized-manual" placeholder="Se calcula automáticamente; puede corregirse manualmente" />
+            </label>
+            <p id="new-normalization-warning" class="field-warning hidden">No se ha podido normalizar completamente la pauta. Revise manualmente.</p>
+          </fieldset>
           <label>Motivo <select id="reason-normalized" required><option value="">Seleccione motivo</option><option>Fracaso viral</option><option>Efectos secundarios</option><option>Optimización</option><option>Interacciones</option><option>Otros</option></select></label>
           <label id="reason-detail-wrap" class="hidden">Especificar motivo <textarea id="reason-detail" rows="3" placeholder="Obligatorio si selecciona Otros. No introduzca identificadores directos."></textarea></label>
         </div>
