@@ -1,14 +1,24 @@
-.env
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Datos reales, copias y exportaciones locales
 *.xlsx
 *.xls
 *.csv
+*.json
+!package*.json
 exports/
-data/real/
-__pycache__/
-.venv/
-.DS_Store
-# Entornos, cachés y secretos adicionales
-venv/
-*.py[cod]
-.streamlit/secrets.toml
-cambiosTAR_local.db
+data/
+*.db
+*.sqlite
+*.sqlite3
+.env
+
+# Artefactos temporales
+node_modules/
+coverage/
+.cache/
+.tmp/

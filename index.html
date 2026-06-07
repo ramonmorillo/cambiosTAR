@@ -3,186 +3,202 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="cambiosTAR: aplicación local en Streamlit para registrar, importar, seudonimizar y analizar cambios de tratamiento antirretroviral." />
-  <title>cambiosTAR · App local de cambios TAR</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="description" content="cambiosTAR: herramienta web estática sin backend para registrar, analizar e informar cambios de tratamiento antirretroviral con almacenamiento local en el navegador." />
+  <title>cambiosTAR · Registro, análisis e informes TAR</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="crypto.js"></script>
+  <script defer src="storage.js"></script>
+  <script defer src="import_export.js"></script>
+  <script defer src="reports.js"></script>
+  <script defer src="charts.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <header class="site-header">
-    <nav class="nav" aria-label="Navegación principal">
-      <a class="brand" href="#inicio" aria-label="Inicio cambiosTAR">
-        <span class="brand-mark">✚</span>
-        <span>cambiosTAR</span>
-      </a>
-      <div class="nav-links">
-        <a href="#uso-diario">Uso diario</a>
-        <a href="#historico">Carga inicial</a>
-        <a href="#instalacion">Instalación</a>
-        <a href="#proteccion-datos">Protección de datos</a>
-      </div>
+  <header class="app-header">
+    <a class="brand" href="#inicio" data-section-link="inicio" aria-label="Inicio cambiosTAR"><span class="brand-mark">✚</span><span>cambiosTAR</span></a>
+    <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Abrir menú">☰</button>
+    <nav class="top-nav" id="top-nav" aria-label="Navegación principal">
+      <a href="#inicio" data-section-link="inicio">Inicio</a>
+      <a href="#seguridad" data-section-link="seguridad">Seguridad</a>
+      <a href="#registro" data-section-link="registro">Nuevo cambio</a>
+      <a href="#importar" data-section-link="importar">Importar Excel</a>
+      <a href="#registros" data-section-link="registros">Base</a>
+      <a href="#dashboard" data-section-link="dashboard">Dashboard</a>
+      <a href="#paciente" data-section-link="paciente">Paciente</a>
+      <a href="#informes" data-section-link="informes">Informes</a>
+      <a href="#exportacion" data-section-link="exportacion">Copias</a>
     </nav>
   </header>
 
-  <main id="inicio">
-    <section class="hero section-shell">
-      <div class="hero-copy">
-        <p class="eyebrow">App local · Streamlit · SQLite · Seudonimización</p>
-        <h1>cambiosTAR</h1>
-        <h2>Registro diario y análisis longitudinal de cambios TAR</h2>
-        <p class="hero-text">
-          cambiosTAR permite importar un histórico previo desde Excel, registrar nuevos cambios de tratamiento antirretroviral
-          diariamente y analizar la evolución acumulada en una base local persistente.
-        </p>
-        <div class="hero-actions" aria-label="Accesos rápidos">
-          <a class="button primary" href="#instalacion">Instalar app local</a>
-          <a class="button secondary" href="#uso-diario">Ver uso diario</a>
-          <a class="button ghost" href="#proteccion-datos">Ver privacidad</a>
+  <main>
+    <section id="inicio" class="view hero-view active">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Aplicación web estática · sin backend · GitHub Pages</p>
+          <h1>cambiosTAR</h1>
+          <h2>Registro, análisis e informes de cambios de tratamiento antirretroviral.</h2>
+          <p class="lead">cambiosTAR funciona directamente en el navegador. Los datos se guardan exclusivamente en este navegador/equipo y pueden exportarse en Excel, CSV y JSON para copia de seguridad.</p>
+          <div class="alert info"><strong>Privacidad local:</strong> esta herramienta no tiene backend, no envía datos a servidores externos y no debe utilizarse como historia clínica ni como sustituto de sistemas corporativos.</div>
+          <div class="quick-actions">
+            <button class="btn primary" data-section-link="registro">Registrar nuevo cambio</button>
+            <button class="btn secondary" data-section-link="importar">Importar histórico Excel</button>
+            <button class="btn secondary" data-section-link="dashboard">Ver dashboard</button>
+            <button class="btn secondary" data-section-link="informes">Generar informe</button>
+            <button class="btn ghost" id="home-backup-btn">Exportar copia de seguridad</button>
+          </div>
         </div>
+        <aside class="hero-panel">
+          <div class="status-pill">Datos locales en navegador</div>
+          <div class="local-flow"><span>Registro/Excel</span><strong>→</strong><span>IndexedDB</span><strong>→</strong><span>Excel · CSV · JSON</span></div>
+          <div class="hero-metrics">
+            <div><strong>5</strong><span>variables de entrada</span></div>
+            <div><strong>0</strong><span>servidores externos</span></div>
+            <div><strong>SHA-256</strong><span>patient_id estable</span></div>
+          </div>
+          <p class="small muted">Si se borra la caché o se cambia de navegador/equipo, los datos pueden perderse. Exporte backups periódicos.</p>
+        </aside>
       </div>
-      <aside class="hero-card" aria-label="Resumen de seguridad y flujo local">
-        <div class="status-pill">GitHub Pages no procesa datos</div>
-        <div class="mini-flow">
-          <span>Excel histórico</span>
-          <strong>→</strong>
-          <span>SQLite local</span>
-          <strong>→</strong>
-          <span>Informes seudonimizados</span>
+    </section>
+
+    <section id="seguridad" class="view">
+      <div class="section-title"><p class="eyebrow">Configuración de seguridad</p><h2>Clave local, persistencia y borrado seguro</h2></div>
+      <div class="grid two">
+        <article class="card">
+          <h3>¿Dónde se guardan los datos?</h3>
+          <p>Los registros se almacenan en IndexedDB dentro de este navegador. Si IndexedDB no estuviera disponible, la aplicación usa localStorage como respaldo. No se suben archivos ni registros a ningún servidor.</p>
+          <ul class="check-list">
+            <li>La copia de seguridad depende del usuario.</li>
+            <li>No introduzca nombres, DNI, teléfonos, direcciones ni texto libre identificativo.</li>
+            <li>No suba archivos reales al repositorio GitHub.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Clave local de seudonimización</h3>
+          <p>La clave se combina con el número de historia clínica para generar un <code>patient_id</code> SHA-256 estable antes de guardar el registro. La clave no aparece en exportaciones.</p>
+          <div class="form-grid compact">
+            <label>Clave local <input id="security-key" type="password" autocomplete="new-password" placeholder="Introduzca una clave local" /></label>
+            <label class="checkbox"><input id="save-key" type="checkbox" /> Guardar la clave solo en este navegador</label>
+          </div>
+          <div class="button-row">
+            <button class="btn primary" id="save-key-btn">Configurar clave</button>
+            <button class="btn secondary" id="check-key-btn">Comprobar clave</button>
+            <button class="btn ghost" id="clear-key-btn">Olvidar clave</button>
+          </div>
+          <div id="key-status" class="alert warning">Si se pierde o cambia la clave, el mismo número de historia puede generar identificadores diferentes. Sin clave, use solo datos ficticios o confirme la advertencia al guardar/importar.</div>
+        </article>
+      </div>
+      <article class="card danger-card">
+        <h3>Borrar todos los datos locales</h3>
+        <p>Esta acción elimina registros, configuración y backups locales en este navegador. Requiere doble confirmación.</p>
+        <button class="btn danger" id="delete-all-btn">Borrar todos los datos locales</button>
+      </article>
+    </section>
+
+    <section id="registro" class="view">
+      <div class="section-title"><p class="eyebrow">Registro manual diario</p><h2>Registrar nuevo cambio TAR</h2></div>
+      <form id="record-form" class="card form-card">
+        <div class="form-grid">
+          <label>Fecha del cambio <input type="date" id="change-date" required /></label>
+          <label>Número de historia clínica <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
+          <label>TAR antiguo <input type="text" id="old-tar" required placeholder="Ej.: TDF/FTC/EFV" /></label>
+          <label>TAR nuevo <input type="text" id="new-tar" required placeholder="Ej.: BIC/FTC/TAF" /></label>
+          <label class="full">Motivo <textarea id="reason" required rows="4" placeholder="No introduzca identificadores directos en texto libre"></textarea></label>
         </div>
-        <div class="hero-metrics">
-          <div><strong>5</strong><span>variables de entrada</span></div>
-          <div><strong>10</strong><span>módulos operativos</span></div>
-          <div><strong>0</strong><span>datos reales en GitHub Pages</span></div>
+        <div class="button-row"><button class="btn primary" type="submit">Guardar cambio</button><button class="btn ghost" type="reset">Limpiar formulario</button></div>
+        <div id="record-message" class="message" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section id="importar" class="view">
+      <div class="section-title"><p class="eyebrow">Carga histórica</p><h2>Importar histórico Excel</h2></div>
+      <article class="card">
+        <p>Seleccione un archivo <strong>.xlsx</strong>. Se lee únicamente en el navegador; no se sube a ningún servidor. Antes de importar se validan columnas, errores y posibles duplicados.</p>
+        <input id="excel-file" type="file" accept=".xlsx,.xls" />
+        <div id="mapping-area" class="mapping-area hidden"></div>
+        <div id="import-summary" class="summary-box"></div>
+        <div id="import-preview" class="table-wrap"></div>
+        <div class="button-row"><button class="btn primary" id="validate-excel-btn" disabled>Validar Excel</button><button class="btn secondary" id="import-valid-btn" disabled>Importar registros validados</button></div>
+      </article>
+    </section>
+
+    <section id="registros" class="view">
+      <div class="section-title"><p class="eyebrow">Base de registros</p><h2>Registros guardados</h2></div>
+      <article class="card">
+        <div class="filters form-grid compact">
+          <label>Desde <input type="date" id="filter-from" /></label><label>Hasta <input type="date" id="filter-to" /></label>
+          <label>Año <select id="filter-year"><option value="">Todos</option></select></label><label>Mes <select id="filter-month"><option value="">Todos</option></select></label>
+          <label>Motivo <select id="filter-reason"><option value="">Todos</option></select></label><label>TAR antiguo <input id="filter-old" type="text" /></label>
+          <label>TAR nuevo <input id="filter-new" type="text" /></label><label>Origen <select id="filter-origin"><option value="">Todos</option><option>histórico importado</option><option>registro manual</option></select></label>
+          <label>Patient ID <input id="filter-patient" type="text" /></label>
         </div>
-      </aside>
+        <div class="button-row"><button class="btn secondary" id="clear-filters-btn">Limpiar filtros</button><button class="btn secondary" id="export-filtered-xlsx">Exportar tabla filtrada a Excel</button><button class="btn secondary" id="export-filtered-csv">Exportar tabla filtrada a CSV</button></div>
+        <div id="records-table" class="table-wrap"></div>
+      </article>
     </section>
 
-    <section class="security-banner section-shell" role="note" aria-label="Aviso principal de seguridad">
-      <div class="security-icon">🛡️</div>
-      <p>
-        <strong>Esta página es solo documentación pública.</strong> La aplicación real se ejecuta en local con Streamlit,
-        guarda la información en SQLite y seudonimiza el número de historia clínica antes de persistir cualquier registro.
-      </p>
-    </section>
-
-    <section class="section-shell" id="que-permite">
-      <div class="section-heading">
-        <p class="eyebrow">Objetivo operativo</p>
-        <h2>Una herramienta local acumulativa, no un analizador puntual</h2>
-        <p>El flujo está pensado para uso longitudinal: histórico inicial, registro diario, análisis evolutivo e informes periódicos.</p>
-      </div>
-      <div class="card-grid features-grid">
-        <article class="feature-card"><span>📥</span><h3>Importar histórico</h3><p>Carga un Excel previo, mapea columnas, previsualiza errores y evita duplicados exactos.</p></article>
-        <article class="feature-card"><span>📝</span><h3>Registrar cada día</h3><p>Añade nuevos cambios mediante formulario con fecha, historia, TAR antiguo, TAR nuevo y motivo.</p></article>
-        <article class="feature-card"><span>🗄️</span><h3>Persistir en SQLite</h3><p>Guarda la base acumulada en <code>cambiosTAR_local.db</code>, siempre en el equipo del usuario.</p></article>
-        <article class="feature-card"><span>🔐</span><h3>Seudonimizar antes de guardar</h3><p>Transforma el número de historia con SHA-256 y <code>SECRET_KEY</code> almacenada en <code>.env</code>.</p></article>
-        <article class="feature-card"><span>📈</span><h3>Analizar evolución</h3><p>Revisa tendencias anuales, mensuales, acumuladas y por motivo.</p></article>
-        <article class="feature-card"><span>🔁</span><h3>Estudiar transiciones TAR</h3><p>Identifica patrones TAR antiguo → TAR nuevo, rankings y Sankey si Plotly está disponible.</p></article>
-        <article class="feature-card"><span>👤</span><h3>Trayectoria por paciente</h3><p>Consulta líneas temporales y secuencias TAR por paciente seudonimizado.</p></article>
-        <article class="feature-card"><span>📄</span><h3>Informes y exportaciones</h3><p>Genera salidas seudonimizadas en Excel o HTML por periodos definidos.</p></article>
+    <section id="dashboard" class="view">
+      <div class="section-title"><p class="eyebrow">Dashboard</p><h2>Análisis global</h2></div>
+      <div id="dashboard-cards" class="metric-grid"></div>
+      <div class="chart-grid">
+        <article class="card"><h3>Cambios por año</h3><canvas id="chart-year"></canvas></article>
+        <article class="card"><h3>Cambios por mes</h3><canvas id="chart-month"></canvas></article>
+        <article class="card"><h3>Evolución acumulada</h3><canvas id="chart-cumulative"></canvas></article>
+        <article class="card"><h3>Distribución de motivos</h3><canvas id="chart-reasons"></canvas></article>
+        <article class="card"><h3>Motivos por año</h3><canvas id="chart-reasons-year"></canvas></article>
+        <article class="card"><h3>Top TAR antiguos</h3><canvas id="chart-old"></canvas></article>
+        <article class="card"><h3>Top TAR nuevos</h3><canvas id="chart-new"></canvas></article>
+        <article class="card"><h3>Top transiciones TAR</h3><canvas id="chart-transitions"></canvas></article>
+        <article class="card wide"><h3>Transiciones por motivo</h3><canvas id="chart-transition-reason"></canvas></article>
+        <article class="card wide"><h3>Sankey TAR antiguo → TAR nuevo</h3><div id="sankey-chart"></div></article>
       </div>
     </section>
 
-    <section class="section-shell split-section" id="columnas">
-      <div class="section-heading align-left">
-        <p class="eyebrow">Modelo mínimo</p>
-        <h2>Variables de entrada</h2>
-        <p>La app usa únicamente estas cinco variables. No solicita variables clínicas manuales adicionales.</p>
-      </div>
-      <div class="column-cards" aria-label="Cinco columnas requeridas">
-        <div class="column-card"><span>01</span><strong>Marca temporal o fecha</strong><small>Fecha del cambio</small></div>
-        <div class="column-card"><span>02</span><strong>Número de historia clínico</strong><small>Solo para hash local</small></div>
-        <div class="column-card"><span>03</span><strong>TAR antiguo</strong><small>Pauta previa</small></div>
-        <div class="column-card"><span>04</span><strong>TAR nuevo</strong><small>Pauta posterior</small></div>
-        <div class="column-card"><span>05</span><strong>Motivo</strong><small>Texto original</small></div>
-      </div>
+    <section id="paciente" class="view">
+      <div class="section-title"><p class="eyebrow">Trayectoria por paciente</p><h2>Seguimiento seudonimizado</h2></div>
+      <article class="card">
+        <label>Patient ID seudonimizado <select id="patient-select"><option value="">Seleccione patient_id</option></select></label>
+        <div id="patient-summary" class="summary-box"></div>
+        <div id="patient-timeline" class="timeline"></div>
+        <div class="button-row"><button class="btn secondary" id="export-patient-xlsx">Exportar paciente Excel</button><button class="btn secondary" id="export-patient-csv">Exportar paciente CSV</button><button class="btn primary" id="patient-report-btn">Generar informe individual</button></div>
+      </article>
     </section>
 
-    <section class="section-shell tinted" id="uso-diario">
-      <div class="section-heading">
-        <p class="eyebrow">Uso diario</p>
-        <h2>Trabajo operativo habitual</h2>
-      </div>
-      <ol class="workflow" aria-label="Flujo de uso diario">
-        <li><span>Registrar nuevo cambio</span></li>
-        <li><span>Consultar dashboard</span></li>
-        <li><span>Analizar evolución</span></li>
-        <li><span>Generar informe periódico</span></li>
-      </ol>
+    <section id="informes" class="view">
+      <div class="section-title"><p class="eyebrow">Informes</p><h2>Generador de informes</h2></div>
+      <article class="card">
+        <div class="form-grid compact">
+          <label>Tipo de informe <select id="report-type"><option value="monthly">Mensual</option><option value="quarterly">Trimestral</option><option value="annual">Anual</option><option value="custom">Rango personalizado</option></select></label>
+          <label>Año <input type="number" id="report-year" min="2000" max="2100" /></label>
+          <label>Mes <select id="report-month"></select></label>
+          <label>Trimestre <select id="report-quarter"><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4">T4</option></select></label>
+          <label>Desde <input type="date" id="report-from" /></label><label>Hasta <input type="date" id="report-to" /></label>
+        </div>
+        <div class="button-row"><button class="btn primary" id="generate-report-btn">Generar informe</button><button class="btn secondary" id="copy-report-btn">Copiar resumen</button><button class="btn secondary" id="print-report-btn">Imprimir informe</button><button class="btn secondary" id="export-report-html">Exportar HTML</button><button class="btn secondary" id="export-report-xlsx">Exportar datos Excel</button><button class="btn secondary" id="export-report-csv">Exportar datos CSV</button></div>
+        <div id="report-output" class="report-output"></div>
+      </article>
     </section>
 
-    <section class="section-shell" id="historico">
-      <div class="section-heading">
-        <p class="eyebrow">Carga inicial del histórico</p>
-        <h2>El Excel previo se importa para crear la base acumulada</h2>
-        <p>
-          La importación histórica se realiza en la app local. El usuario carga el Excel, mapea columnas si es necesario,
-          revisa la previsualización, identifica errores y posibles duplicados, y guarda únicamente registros seudonimizados.
-        </p>
-      </div>
-      <ol class="workflow" aria-label="Flujo Excel histórico a SQLite local">
-        <li><span>Excel histórico</span></li>
-        <li><span>Mapeo de columnas</span></li>
-        <li><span>Validación</span></li>
-        <li><span>Seudonimización local</span></li>
-        <li><span>SQLite acumulada</span></li>
-      </ol>
-    </section>
-
-    <section class="section-shell tinted" id="analisis">
-      <div class="section-heading">
-        <p class="eyebrow">Módulos</p>
-        <h2>Análisis incluidos en Streamlit local</h2>
-      </div>
-      <div class="analysis-grid">
-        <div>Dashboard general</div>
-        <div>Nuevo cambio diario</div>
-        <div>Importación histórica con mapeo</div>
-        <div>Exploración, edición y borrado</div>
-        <div>Evolución anual, mensual y acumulada</div>
-        <div>Distribución y auditoría de motivos</div>
-        <div>Transiciones TAR y Sankey</div>
-        <div>Trayectoria por paciente seudonimizado</div>
-        <div>Informes periódicos</div>
-        <div>Exportación seudonimizada</div>
-      </div>
-    </section>
-
-    <section class="section-shell install-section" id="instalacion">
-      <div class="section-heading align-left">
-        <p class="eyebrow">App real</p>
-        <h2>Instalación local</h2>
-        <p>Ejecuta la aplicación operativa en tu equipo. GitHub Pages es solo documentación pública.</p>
-      </div>
-      <div class="code-panel" aria-label="Comandos de instalación local">
-        <pre><code>git clone https://github.com/&lt;usuario&gt;/cambiosTAR.git
-cd cambiosTAR
-python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
-.venv\Scripts\activate           # Windows PowerShell
-pip install -r requirements.txt
-cp .env.example .env             # Windows: copy .env.example .env
-# edita .env y cambia SECRET_KEY
-streamlit run app.py</code></pre>
-      </div>
-    </section>
-
-    <section class="section-shell protection" id="proteccion-datos">
-      <div class="section-heading align-left">
-        <p class="eyebrow">Privacidad</p>
-        <h2>Protección de datos</h2>
-      </div>
-      <div class="protection-grid">
-        <article><h3>Procesamiento local</h3><p>No se suben datos a servidores externos desde la aplicación. GitHub Pages no tiene carga ni procesamiento de datos.</p></article>
-        <article><h3>Seudonimización previa</h3><p>El número de historia se transforma mediante SHA-256 y una clave local antes de guardarse en SQLite.</p></article>
-        <article><h3>Gestión de secretos</h3><p>La clave debe almacenarse como <code>SECRET_KEY</code> en <code>.env</code>. Ese archivo nunca debe subirse a GitHub.</p></article>
-        <article><h3>Repositorio seguro</h3><p><code>.env</code>, <code>cambiosTAR_local.db</code>, Excel, CSV, exportaciones y datos reales están excluidos por <code>.gitignore</code>.</p></article>
-      </div>
+    <section id="exportacion" class="view">
+      <div class="section-title"><p class="eyebrow">Copias y exportación</p><h2>Backups y descargas</h2></div>
+      <article class="card">
+        <div class="alert warning">Al tratarse de una herramienta sin backend, la copia de seguridad depende del usuario. Se recomienda exportar periódicamente un backup JSON y una copia Excel/CSV.</div>
+        <div class="button-row stacked">
+          <button class="btn secondary" id="export-all-xlsx">Exportar todos los registros a Excel</button>
+          <button class="btn secondary" id="export-all-csv">Exportar todos los registros a CSV</button>
+          <button class="btn secondary" id="export-all-json">Exportar todos los registros a JSON</button>
+          <button class="btn primary" id="export-backup-json">Exportar backup completo JSON</button>
+          <label class="btn ghost file-label">Importar backup JSON<input id="backup-file" type="file" accept="application/json,.json" hidden /></label>
+          <button class="btn secondary" id="export-period-btn">Exportar registros de periodo del informe</button>
+          <button class="btn secondary" id="download-template-btn">Descargar plantilla Excel</button>
+        </div>
+        <p class="small muted">La plantilla incluye: Fecha, Número de historia clínico, TAR antiguo, TAR nuevo y Motivo. No debe subirse a GitHub ni compartirse con datos reales.</p>
+      </article>
     </section>
   </main>
 
-  <footer class="site-footer">
-    <p>Herramienta desarrollada por Ramón Morillo para el análisis local de cambios de tratamiento antirretroviral.</p>
-    <strong>2026 · cambiosTAR</strong>
-  </footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
