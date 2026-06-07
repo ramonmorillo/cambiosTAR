@@ -33,9 +33,22 @@
 
   function setPseudonymizationKey(key) {
     const cleanKey = String(key || '').trim();
-    if (!cleanKey) throw new Error('La clave local no puede estar vacía.');
-    if (!safeStorageSet(localStorage, PSEUDONYMIZATION_KEY_STORAGE, cleanKey)) throw new Error('No se ha podido guardar la clave local en este navegador.');
+    if (!cleanKey) {
+      alert('La clave local no puede estar vacía.');
+      return false;
+    }
+    if (!safeStorageSet(localStorage, PSEUDONYMIZATION_KEY_STORAGE, cleanKey)) {
+      alert('No se ha podido guardar la clave local en este navegador.');
+      return false;
+    }
     callSecurityStateUpdate();
+
+    const msg = document.getElementById('security-message');
+    if (msg) {
+      msg.textContent = 'Clave local configurada correctamente. Ya puede registrar cambios.';
+    }
+
+    console.log('Clave guardada:', hasPseudonymizationKey());
     return true;
   }
 
@@ -51,6 +64,11 @@
   function clearPseudonymizationKey() {
     safeStorageRemove(localStorage, PSEUDONYMIZATION_KEY_STORAGE);
     callSecurityStateUpdate();
+
+    const msg = document.getElementById('security-message');
+    if (msg) {
+      msg.textContent = 'Clave local eliminada.';
+    }
   }
 
   async function pseudonymize(clinicalId, explicitPseudonymizationKey) {

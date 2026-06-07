@@ -91,6 +91,7 @@
           </div>
           <div id="key-status" class="alert warning">No hay clave local configurada.</div>
           <div id="security-status" class="small muted" aria-live="polite">No hay clave local configurada.</div>
+          <div id="security-message" class="small muted" aria-live="polite"></div>
         </article>
       </div>
       <article class="card danger-card">
@@ -194,6 +195,7 @@
           <label>Motivo <select id="filter-reason"><option value="">Todos</option></select></label><label>TAR antiguo <input id="filter-old" type="text" /></label>
           <label>TAR nuevo <input id="filter-new" type="text" /></label><label>Origen <select id="filter-origin"><option value="">Todos</option><option>histórico importado</option><option>registro manual</option></select></label>
           <label>Patient ID <input id="filter-patient" type="text" /></label>
+          <label>Estado revisión <select id="filter-review"><option value="">Todos</option><option value="ok">OK</option><option value="pendiente">Pendiente</option></select></label>
         </div>
         <div class="button-row"><button class="btn secondary" id="clear-filters-btn">Limpiar filtros</button><button class="btn secondary" id="export-filtered-xlsx">Exportar tabla filtrada a Excel</button><button class="btn secondary" id="export-filtered-csv">Exportar tabla filtrada a CSV</button></div>
         <div id="records-table" class="table-wrap"></div>

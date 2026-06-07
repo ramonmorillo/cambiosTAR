@@ -3,7 +3,12 @@
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
-    const el = $('toast'); el.textContent = message; el.className = `toast show ${type}`;
+    const el = $('toast');
+    if (!el) {
+      console.log(message);
+      return;
+    }
+    el.textContent = message; el.className = `toast show ${type}`;
     setTimeout(() => el.classList.remove('show'), 4200);
   }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
@@ -73,26 +78,43 @@
   }
 
   function toggleReasonDetail() {
-    const reasonSelect = $('reason-normalized');
-    const detailWrapper = $('reason-detail-wrap');
-    const detailInput = $('reason-detail');
+    const motivoSelect =
+      $('motivo') ||
+      $('reason') ||
+      $('motivo-normalizado') ||
+      $('reason-normalized');
 
-    if (!reasonSelect || !detailInput) return;
+    const detailInput =
+      $('motivo-detalle') ||
+      $('reason-detail') ||
+      $('motivoDetalle');
 
-    const isOther = reasonSelect.value === 'Otros';
+    const detailWrapper =
+      $('motivo-detalle-wrapper') ||
+      $('reason-detail-wrapper') ||
+      $('reason-detail-wrap');
+
+    if (!motivoSelect || !detailInput) return;
+
+    const isOther = ['Otros', 'OTROS', 'Otro'].includes(motivoSelect.value);
+
     if (detailWrapper) {
+      detailWrapper.style.display = isOther ? 'block' : 'none';
       detailWrapper.classList.toggle('hidden', !isOther);
-      detailWrapper.style.display = isOther ? '' : 'none';
     }
+
     detailInput.required = isOther;
-    if (!isOther) detailInput.value = '';
+
+    if (!isOther) {
+      detailInput.value = '';
+    }
   }
 
   function showSection(id) {
     document.querySelectorAll('.view').forEach((section) => section.classList.toggle('active', section.id === id));
     document.querySelectorAll('[data-section-link]').forEach((link) => link.classList.toggle('active', link.dataset.sectionLink === id));
     location.hash = id;
-    $('top-nav').classList.remove('open');
+    $('top-nav')?.classList.remove('open');
     if (id === 'dashboard') window.CambiosCharts.renderCharts(state.records);
   }
 
@@ -170,19 +192,23 @@
     const normalized = window.CambiosNormalize.normalizarPautaTAR(builder.medicamentos);
     builder.autoPauta = normalized.pauta || '';
     const manualInput = $(`${prefix}-normalized-manual`);
-    if (!manualInput.dataset.manualEdited) manualInput.value = builder.autoPauta;
-    $(`${prefix}-normalization-warning`).classList.toggle('hidden', !normalized.advertencia);
-    $(`${prefix}-selected`).innerHTML = builder.medicamentos.length ? builder.medicamentos.map((med, index) => `<div class="selected-med"><div><strong>${escapeHtml(med.nombre || 'Medicamento manual')}</strong><small>${escapeHtml([med.principio_activo, med.forma_farmaceutica, med.laboratorio, med.codigo_nacional ? `CN: ${med.codigo_nacional}` : '', med.fuente].filter(Boolean).join(' · '))}</small></div><button class="link-btn danger-text" type="button" data-remove-med="${kind}" data-index="${index}">Eliminar</button></div>`).join('') : `<p class="small muted">Sin medicamentos seleccionados para ${label}.</p>`;
+    if (manualInput && !manualInput.dataset.manualEdited) manualInput.value = builder.autoPauta;
+    $(`${prefix}-normalization-warning`)?.classList.toggle('hidden', !normalized.advertencia);
+    const selectedEl = $(`${prefix}-selected`);
+    if (!selectedEl) return;
+    selectedEl.innerHTML = builder.medicamentos.length ? builder.medicamentos.map((med, index) => `<div class="selected-med"><div><strong>${escapeHtml(med.nombre || 'Medicamento manual')}</strong><small>${escapeHtml([med.principio_activo, med.forma_farmaceutica, med.laboratorio, med.codigo_nacional ? `CN: ${med.codigo_nacional}` : '', med.fuente].filter(Boolean).join(' · '))}</small></div><button class="link-btn danger-text" type="button" data-remove-med="${kind}" data-index="${index}">Eliminar</button></div>`).join('') : `<p class="small muted">Sin medicamentos seleccionados para ${label}.</p>`;
   }
 
   function resetTarBuilders() {
     state.tarBuilders.old = { medicamentos: [], autoPauta: '' };
     state.tarBuilders.new = { medicamentos: [], autoPauta: '' };
     ['old', 'new'].forEach((kind) => {
-      $(`${kind}-cima-results`).innerHTML = '';
-      $(`${kind}-cima-message`).textContent = 'Busque y añada uno o varios medicamentos.';
+      const results = $(`${kind}-cima-results`);
+      const message = $(`${kind}-cima-message`);
+      if (results) results.innerHTML = '';
+      if (message) message.textContent = 'Busque y añada uno o varios medicamentos.';
       const manualInput = $(`${kind}-normalized-manual`);
-      manualInput.dataset.manualEdited = '';
+      if (manualInput) manualInput.dataset.manualEdited = '';
       renderTarBuilder(kind);
     });
   }
@@ -197,23 +223,27 @@
     const id = medicationId(clean);
     if (state.tarBuilders[kind].medicamentos.some((med) => medicationId(med) === id)) throw new Error('Este medicamento ya está añadido a la pauta.');
     state.tarBuilders[kind].medicamentos.push(clean);
-    $(`${kind}-normalized-manual`).dataset.manualEdited = '';
+    if ($(`${kind}-normalized-manual`)) $(`${kind}-normalized-manual`).dataset.manualEdited = '';
     renderTarBuilder(kind);
   }
 
   async function searchCimaFor(kind) {
     const prefix = kind === 'old' ? 'old' : 'new';
     const addLabel = kind === 'old' ? 'Añadir al TAR antiguo' : 'Añadir al TAR nuevo';
-    $(`${prefix}-cima-message`).textContent = 'Consultando CIMA/AEMPS…';
-    $(`${prefix}-cima-results`).innerHTML = '';
-    const result = await window.CambiosNormalize.buscarMedicamentoCIMA($(`${prefix}-cima-query`).value);
-    $(`${prefix}-cima-message`).textContent = result.message;
+    const message = $(`${prefix}-cima-message`);
+    const resultsEl = $(`${prefix}-cima-results`);
+    const queryEl = $(`${prefix}-cima-query`);
+    if (message) message.textContent = 'Consultando CIMA/AEMPS…';
+    if (resultsEl) resultsEl.innerHTML = '';
+    const result = await window.CambiosNormalize.buscarMedicamentoCIMA(queryEl?.value || '');
+    if (message) message.textContent = result.message;
     if (!result.results.length) {
-      $(`${prefix}-manual-panel`).classList.remove('hidden');
+      $(`${prefix}-manual-panel`)?.classList.remove('hidden');
       return;
     }
-    $(`${prefix}-cima-results`).innerHTML = result.results.map((item, index) => `<article class="cima-result-card"><div><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml([item.principio_activo, item.forma_farmaceutica, item.laboratorio, item.codigo_nacional ? `CN: ${item.codigo_nacional}` : ''].filter(Boolean).join(' · '))}</small></div><button class="btn secondary" type="button" data-add-cima="${kind}" data-index="${index}">${addLabel}</button></article>`).join('');
-    $(`${prefix}-cima-results`).dataset.results = JSON.stringify(result.results);
+    if (!resultsEl) return;
+    resultsEl.innerHTML = result.results.map((item, index) => `<article class="cima-result-card"><div><strong>${escapeHtml(item.nombre)}</strong><small>${escapeHtml([item.principio_activo, item.forma_farmaceutica, item.laboratorio, item.codigo_nacional ? `CN: ${item.codigo_nacional}` : ''].filter(Boolean).join(' · '))}</small></div><button class="btn secondary" type="button" data-add-cima="${kind}" data-index="${index}">${addLabel}</button></article>`).join('');
+    resultsEl.dataset.results = JSON.stringify(result.results);
   }
 
 
@@ -231,12 +261,13 @@
       ['Transición más frecuente', top(records, 'transicion_tar_normalizada')[0]],
       ['Último registro guardado', records[0]?.fecha || 'Sin datos']
     ];
+    if (!$('dashboard-cards')) return;
     $('dashboard-cards').innerHTML = metrics.map(([label, value]) => `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
     if (document.querySelector('#dashboard.active')) window.CambiosCharts.renderCharts(records);
   }
 
   function uniqueOptions(key) { return Array.from(new Set(state.records.map((r) => r[key]).filter(Boolean))).sort(); }
-  function fillSelect(id, values, first = 'Todos') { const el = $(id); const old = el.value; el.innerHTML = `<option value="">${first}</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join(''); el.value = old; }
+  function fillSelect(id, values, first = 'Todos') { const el = $(id); if (!el) return; const old = el.value; el.innerHTML = `<option value="">${first}</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join(''); el.value = old; }
   function updateFilterOptions() {
     fillSelect('filter-year', uniqueOptions('anio'));
     fillSelect('filter-month', Array.from({ length: 12 }, (_, i) => i + 1));
@@ -244,14 +275,16 @@
   }
   function applyFilters() {
     updateFilterOptions();
-    const from = $('filter-from').value, to = $('filter-to').value, year = $('filter-year').value, month = $('filter-month').value, reason = $('filter-reason').value;
-    const old = $('filter-old').value.toLowerCase(), newer = $('filter-new').value.toLowerCase(), origin = $('filter-origin').value, patient = $('filter-patient').value.toLowerCase();
-    state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || r.patient_id.toLowerCase().includes(patient)));
+    if (!$('records-table')) return;
+    const from = $('filter-from')?.value || '', to = $('filter-to')?.value || '', year = $('filter-year')?.value || '', month = $('filter-month')?.value || '', reason = $('filter-reason')?.value || '';
+    const old = ($('filter-old')?.value || '').toLowerCase(), newer = ($('filter-new')?.value || '').toLowerCase(), origin = $('filter-origin')?.value || '', patient = ($('filter-patient')?.value || '').toLowerCase(), review = $('filter-review')?.value || '';
+    state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || r.patient_id.toLowerCase().includes(patient)) && (!review || (r.estado_revision || (isPendingReview(r) ? 'pendiente' : 'ok')) === review));
     renderRecordsTable();
   }
 
   function renderRecordsTable() {
     const rows = state.filtered;
+    if (!$('records-table')) return;
     $('records-table').innerHTML = `<p class="small"><strong>${rows.length}</strong> registros mostrados de ${state.records.length}. ${state.records.filter(isPendingReview).length} pendientes de revisar.</p><table><thead><tr><th>Fecha</th><th>Patient ID</th><th>TAR antiguo original</th><th>TAR antiguo normalizado</th><th>TAR nuevo original</th><th>TAR nuevo normalizado</th><th>Transición normalizada</th><th>Motivo</th><th>Detalle</th><th>Estado</th><th>Origen</th><th>Acciones</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.fecha}</td><td>${escapeHtml(r.patient_id)}</td><td>${escapeHtml(r.tar_antiguo_original || r.tar_antiguo)}</td><td>${escapeHtml(normalizedOld(r))}</td><td>${escapeHtml(r.tar_nuevo_original || r.tar_nuevo)}</td><td>${escapeHtml(normalizedNew(r))}</td><td>${escapeHtml(normalizedTransition(r))}</td><td>${escapeHtml(r.motivo_normalizado)}</td><td>${escapeHtml(r.motivo_detalle || '')}</td><td>${isPendingReview(r) ? '<span class="badge warning">Pendiente</span>' : '<span class="badge ok">OK</span>'}</td><td>${escapeHtml(r.origen)}</td><td><button class="link-btn" data-edit="${r.id}">Editar</button><button class="link-btn danger-text" data-delete="${r.id}">Eliminar</button></td></tr>`).join('') || '<tr><td colspan="12">Sin registros.</td></tr>'}</tbody></table>`;
   }
 
@@ -483,15 +516,23 @@
       on(`${kind}-normalized-manual`, 'input', (e) => { e.target.dataset.manualEdited = e.target.value !== state.tarBuilders[kind].autoPauta ? 'true' : ''; });
     });
     document.addEventListener('click', (e) => {
-      if (e.target.dataset.addCima) {
-        try { const results = JSON.parse($(`${e.target.dataset.addCima}-cima-results`)?.dataset.results || '[]'); addMedication(e.target.dataset.addCima, results[Number(e.target.dataset.index)]); } catch (error) { toast(error.message, 'error'); }
+      const target = e.target?.closest?.('[data-add-cima], [data-remove-med]') || e.target;
+      if (target?.dataset?.addCima) {
+        try { const results = JSON.parse($(`${target.dataset.addCima}-cima-results`)?.dataset.results || '[]'); addMedication(target.dataset.addCima, results[Number(target.dataset.index)]); } catch (error) { toast(error.message, 'error'); }
       }
-      if (e.target.dataset.removeMed) { state.tarBuilders[e.target.dataset.removeMed].medicamentos.splice(Number(e.target.dataset.index), 1); $(`${e.target.dataset.removeMed}-normalized-manual`).dataset.manualEdited = ''; renderTarBuilder(e.target.dataset.removeMed); }
+      if (target?.dataset?.removeMed) {
+        state.tarBuilders[target.dataset.removeMed].medicamentos.splice(Number(target.dataset.index), 1);
+        const manual = $(`${target.dataset.removeMed}-normalized-manual`);
+        if (manual) manual.dataset.manualEdited = '';
+        renderTarBuilder(target.dataset.removeMed);
+      }
     });
-    on('reason-normalized', 'change', toggleReasonDetail);
+    const motivoSelect = $('motivo') || $('reason') || $('motivo-normalizado') || $('reason-normalized');
+    if (motivoSelect) motivoSelect.addEventListener('change', toggleReasonDetail);
     on('save-key-btn', 'click', () => {
       try {
-        setPseudonymizationKey($('security-key')?.value);
+        const saved = setPseudonymizationKey($('security-key')?.value);
+        if (!saved) { updateSecurityState(); return; }
         if ($('security-key')) $('security-key').value = '';
         updateSecurityState('Clave local configurada correctamente. Ya puede registrar cambios.');
         toast('Clave local configurada correctamente. Ya puede registrar cambios.');
@@ -523,7 +564,7 @@
     });
     on('validate-excel-btn', 'click', validateExcel);
     on('import-valid-btn', 'click', importValidated);
-    ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient'].forEach((id) => on(id, 'input', applyFilters));
+    ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient', 'filter-review'].forEach((id) => on(id, 'input', applyFilters));
     on('clear-filters-btn', 'click', () => { document.querySelectorAll('.filters input,.filters select').forEach((el) => { el.value = ''; }); applyFilters(); });
     on('records-table', 'click', (e) => { if (e.target.dataset.edit) editRecord(e.target.dataset.edit); if (e.target.dataset.delete) deleteRecord(e.target.dataset.delete); });
     on('export-filtered-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.filtered, 'cambiosTAR_filtrado.xlsx'));
@@ -549,9 +590,10 @@
   }
 
   function initDates() {
-    $('change-date').value = new Date().toISOString().slice(0, 10);
+    if ($('change-date')) $('change-date').value = new Date().toISOString().slice(0, 10);
     resetTarBuilders(); toggleReasonDetail();
-    $('report-year').value = new Date().getFullYear();
+    if ($('report-year')) $('report-year').value = new Date().getFullYear();
+    if (!$('report-month')) return;
     $('report-month').innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('');
     $('report-month').value = new Date().getMonth() + 1;
   }
@@ -560,5 +602,13 @@
   window.updateSecurityWarnings = updateSecurityWarnings;
   window.toggleReasonDetail = toggleReasonDetail;
 
-  document.addEventListener('DOMContentLoaded', async () => { bindEvents(); initDates(); if (typeof toggleReasonDetail === 'function') toggleReasonDetail(); updateSecurityState(); await refresh(); showSection(location.hash?.slice(1) || 'inicio'); });
+  document.addEventListener('DOMContentLoaded', async () => {
+    if (typeof bindEvents === 'function') bindEvents();
+    if (typeof initDates === 'function') initDates();
+    if (typeof toggleReasonDetail === 'function') toggleReasonDetail();
+    if (typeof updateSecurityState === 'function') updateSecurityState();
+    if (typeof refresh === 'function') await refresh();
+    if (typeof renderCurrentView === 'function') renderCurrentView();
+    else showSection(location.hash?.slice(1) || 'inicio');
+  });
 }());

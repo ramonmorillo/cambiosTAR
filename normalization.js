@@ -1,5 +1,6 @@
 (function () {
-  const CUSTOM_KEY = 'cambiosTAR_custom_tar_dictionary';
+  const CUSTOM_KEY = 'cambiosTAR_custom_dictionary';
+  const LEGACY_CUSTOM_KEY = 'cambiosTAR_custom_tar_dictionary';
   const CIMA_ENABLED_KEY = 'cambiosTAR_cima_enabled';
   const MOTIVOS = ['Fracaso viral', 'Efectos secundarios', 'Optimización', 'Interacciones', 'Otros'];
 
@@ -38,15 +39,22 @@
   }
 
   function getCustomDictionary() {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]'); } catch { return []; }
+    try {
+      const current = localStorage.getItem(CUSTOM_KEY);
+      const legacy = localStorage.getItem(LEGACY_CUSTOM_KEY);
+      if (!current && legacy) localStorage.setItem(CUSTOM_KEY, legacy);
+      return JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]');
+    } catch { return []; }
   }
 
   function saveCustomDictionary(entries) {
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(entries));
+    localStorage.removeItem(LEGACY_CUSTOM_KEY);
   }
 
   function clearLocalNormalizationConfig() {
     localStorage.removeItem(CUSTOM_KEY);
+    localStorage.removeItem(LEGACY_CUSTOM_KEY);
     localStorage.removeItem(CIMA_ENABLED_KEY);
   }
 
@@ -212,15 +220,24 @@
   function isCimaEnabled() { return localStorage.getItem(CIMA_ENABLED_KEY) !== 'false'; }
   function setCimaEnabled(enabled) { localStorage.setItem(CIMA_ENABLED_KEY, enabled ? 'true' : 'false'); }
 
-  function mapCimaItem(item) {
+  function scalarToText(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+    if (Array.isArray(value)) return value.map(scalarToText).filter(Boolean).join(', ');
+    if (typeof value === 'object') {
+      return scalarToText(value.nombre || value.principioActivo || value.pactivo || value.descripcion || value.valor || value.name || '');
+    }
+    return '';
+  }
+
+  function mapCimaItem(item = {}) {
     const activeValue = item.pactivos || item.principiosActivos || item.principioActivo || '';
-    const pactivos = Array.isArray(activeValue) ? activeValue.map((active) => typeof active === 'string' ? active : (active.nombre || active.principioActivo || active.pactivo || '')).filter(Boolean).join(', ') : activeValue;
     return {
-      nombre: item.nombre || item.nomMedicamento || item.descripcion || '',
-      codigo_nacional: item.cn || item.codigoNacional || item.nregistro || item.nroRegistro || '',
-      principio_activo: pactivos,
-      forma_farmaceutica: item.formaFarmaceutica || item.forma || '',
-      laboratorio: item.labtitular || item.laboratorio || item.titular || '',
+      nombre: scalarToText(item.nombre || item.nomMedicamento || item.descripcion),
+      codigo_nacional: scalarToText(item.cn || item.codigoNacional || item.nregistro || item.nroRegistro),
+      principio_activo: scalarToText(activeValue),
+      forma_farmaceutica: scalarToText(item.formaFarmaceutica || item.forma),
+      laboratorio: scalarToText(item.labtitular || item.laboratorio || item.titular),
       fuente: 'CIMA'
     };
   }

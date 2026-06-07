@@ -46,11 +46,11 @@ Al guardar o importar registros, la aplicación calcula automáticamente:
 
 El texto original del motivo se conserva siempre en `motivo_original`. Además, se clasifica automáticamente en uno de estos grupos:
 
+- Fracaso viral.
+- Efectos secundarios.
 - Optimización.
-- Efecto adverso.
-- Interacción.
-- Fracaso virológico.
-- Otro.
+- Interacciones.
+- Otros.
 
 La clasificación se basa en reglas de texto conservadoras y debe interpretarse como apoyo analítico, no como codificación clínica definitiva.
 
@@ -61,7 +61,7 @@ Antes de guardar un registro, el número de historia clínica se transforma en u
 La interfaz permite configurar una clave local de seudonimización. Esta clave:
 
 - Se usa para generar identificadores estables.
-- Puede guardarse solo en el navegador si el usuario lo decide.
+- Se guarda exclusivamente en el localStorage de este navegador con la clave `cambiosTAR_pseudonymization_key`.
 - No se incluye en exportaciones.
 - Debe conservarse de forma segura: si se pierde o cambia, el mismo número de historia puede generar identificadores diferentes.
 
@@ -74,9 +74,10 @@ Avisos importantes:
 
 ### Pruebas manuales de clave local
 
-- Configurar una clave sin marcar **Guardar la clave solo en este navegador** y registrar un cambio sin recargar la página.
-- Configurar una clave marcando **Guardar la clave solo en este navegador**, recargar la página y registrar un cambio.
-- Pulsar **Olvidar clave** y comprobar que vuelve a mostrarse el aviso de falta de clave y se bloquea el registro real.
+- Ir a **Seguridad**, introducir una clave local y pulsar **Configurar clave**.
+- Comprobar en DevTools > Application > Local Storage que existe `cambiosTAR_pseudonymization_key`.
+- Ir a **Nuevo cambio** y comprobar que desaparece el aviso de falta de clave y aparece el mensaje positivo.
+- Pulsar **Olvidar clave** y comprobar que `cambiosTAR_pseudonymization_key` desaparece, vuelve a mostrarse el aviso y se bloquea el registro real.
 - Intentar registrar un cambio sin clave y comprobar que la aplicación lo bloquea antes de guardar.
 - Revisar los registros/exportaciones y comprobar que el número de historia clínica no se guarda en claro.
 
@@ -212,3 +213,23 @@ No se necesita compilar ni instalar dependencias. Los archivos principales son:
 Herramienta desarrollada por Ramón Morillo para el registro y análisis local en navegador de cambios de tratamiento antirretroviral.
 
 **2026 · cambiosTAR**
+
+
+## Evidencia de pruebas obligatorias de refactorización
+
+Checklist manual para validar en Chrome tras desplegar/publicar la web estática:
+
+1. **Consola limpia:** abrir la web y confirmar que la Console no muestra errores rojos ni `toggleReasonDetail is not defined`.
+2. **Clave local:** en Seguridad, introducir `prueba123`, pulsar **Configurar clave** y verificar en Local Storage la entrada `cambiosTAR_pseudonymization_key`.
+3. **Registro:** registrar un cambio ficticio con Biktarvy → Dovato y motivo Optimización; verificar en Base que solo aparece `patient_id` seudonimizado y no el NHC en claro.
+4. **CIMA:** buscar Dovato, confirmar que no aparece `[object Object]` y añadirlo al TAR para obtener `DTG/3TC`.
+5. **TAR múltiple:** añadir Tivicay + Descovy y confirmar la pauta `DTG + FTC/TAF` y la transición `DTG + FTC/TAF → DTG/3TC`.
+6. **Motivo Otros:** seleccionar Otros, confirmar que aparece el detalle obligatorio y que no permite guardar sin detalle.
+7. **Excel:** importar un `.xlsx` con `Marca temporal`, `Número de historia clínico`, `TAR antiguo`, `TAR nuevo` y `Motivo`; validar, previsualizar e importar registros validados.
+8. **Exportaciones:** exportar Excel, CSV y JSON; confirmar que no incluyen clave local ni NHC en claro.
+9. **Backup:** exportar backup JSON, borrar registros, importar el backup y confirmar que se recupera la base.
+
+Comprobaciones automatizadas ejecutadas en la rama de trabajo:
+
+- `node --check app.js && node --check crypto.js && node --check normalization.js && node --check import_export.js && node --check storage.js && node --check reports.js && node --check charts.js` valida sintaxis JavaScript.
+- `node /tmp/smoke.js` carga los módulos en un DOM simulado, verifica que `toggleReasonDetail` existe, guarda `cambiosTAR_pseudonymization_key` y comprueba la normalización `Tivicay + Descovy → DTG + FTC/TAF`.

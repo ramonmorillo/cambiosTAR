@@ -2,11 +2,12 @@
   const DB_NAME = 'cambiosTAR_db';
   const STORE = 'records';
   const VERSION = 1;
-  const LS_KEY = 'cambiosTAR_records_fallback';
+  const LS_KEY = 'cambiosTAR_records';
+  const LEGACY_LS_KEY = 'cambiosTAR_records_fallback';
   let dbPromise;
 
   function openDb() {
-    if (!('indexedDB' in window)) return Promise.resolve(null);
+    if (!window.indexedDB) return Promise.resolve(null);
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve) => {
       const request = indexedDB.open(DB_NAME, VERSION);
@@ -25,9 +26,14 @@
   }
 
   function fallbackRecords() {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
+    try {
+      const current = localStorage.getItem(LS_KEY);
+      const legacy = localStorage.getItem(LEGACY_LS_KEY);
+      if (!current && legacy) localStorage.setItem(LS_KEY, legacy);
+      return JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+    } catch { return []; }
   }
-  function setFallback(records) { localStorage.setItem(LS_KEY, JSON.stringify(records)); }
+  function setFallback(records) { localStorage.setItem(LS_KEY, JSON.stringify(records)); localStorage.removeItem(LEGACY_LS_KEY); }
 
   async function withStore(mode, callback) {
     const db = await openDb();
@@ -86,6 +92,7 @@
 
   async function clearAll() {
     localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(LEGACY_LS_KEY);
     const db = await openDb();
     if (!db) return;
     await withStore('readwrite', (store) => store.clear());

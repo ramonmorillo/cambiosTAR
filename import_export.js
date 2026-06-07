@@ -45,7 +45,7 @@
     return '';
   }
 
-  function deriveRecord({ fecha, patient_id, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado, tar_antiguo_medicamentos, tar_nuevo_medicamentos, tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual }) {
+  function deriveRecord({ fecha, patient_id, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado, tar_antiguo_medicamentos, tar_nuevo_medicamentos, tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual, normalizacion_manual, estado_revision }) {
     const date = toDateString(fecha);
     const d = new Date(`${date}T00:00:00`);
     const year = d.getUTCFullYear();
@@ -82,6 +82,8 @@
       tar_nuevo_reconocido: Boolean(newNorm.reconocido),
       motivo_clasificado: Boolean(classified.clasificado || motivo_normalizado),
       estado_normalizacion_tar: (!oldNorm.reconocido || !newNorm.reconocido) ? 'pendiente_revision' : 'normalizado',
+      estado_revision: estado_revision || ((!oldNorm.reconocido || !newNorm.reconocido || !Boolean(classified.clasificado || motivo_normalizado)) ? 'pendiente' : 'ok'),
+      normalizacion_manual: Boolean(normalizacion_manual || tar_antiguo_normalizacion_manual || tar_nuevo_normalizacion_manual),
       anio: year,
       mes: month,
       trimestre: quarter,
@@ -118,8 +120,27 @@
       tar_nuevo_medicamentos: JSON.stringify(r.tar_nuevo_medicamentos || []),
       tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual ? 'Sí' : 'No',
       tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual ? 'Sí' : 'No',
-      pendiente_revision: (!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado) ? 'Sí' : 'No'
+      estado_revision: r.estado_revision || ((!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado) ? 'pendiente' : 'ok'),
+      normalizacion_manual: r.normalizacion_manual || r.tar_antiguo_normalizacion_manual || r.tar_nuevo_normalizacion_manual ? 'Sí' : 'No',
+      pendiente_revision: (!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || r.estado_revision === 'pendiente') ? 'Sí' : 'No'
     }));
+  }
+
+
+  function sanitizeRecordForBackup(record) {
+    const allowed = [
+      'id', 'fecha', 'anio', 'mes', 'trimestre', 'patient_id',
+      'tar_antiguo_medicamentos', 'tar_antiguo_original', 'tar_antiguo_normalizado',
+      'tar_nuevo_medicamentos', 'tar_nuevo_original', 'tar_nuevo_normalizado',
+      'transicion_tar_normalizada', 'motivo_normalizado', 'motivo_detalle', 'motivo_original',
+      'origen', 'fecha_creacion', 'normalizacion_manual', 'estado_revision',
+      'tar_antiguo_reconocido', 'tar_nuevo_reconocido', 'motivo_clasificado',
+      'estado_normalizacion_tar', 'tar_antiguo_normalizacion_manual', 'tar_nuevo_normalizacion_manual'
+    ];
+    return allowed.reduce((acc, key) => {
+      if (Object.prototype.hasOwnProperty.call(record || {}, key)) acc[key] = record[key];
+      return acc;
+    }, {});
   }
 
   function downloadBlob(content, filename, type) {
@@ -138,7 +159,14 @@
   }
 
   function exportJSON(records, filename = 'cambiosTAR_registros.json') {
-    downloadBlob(JSON.stringify({ app: 'cambiosTAR', exported_at: new Date().toISOString(), records, custom_tar_dictionary: window.CambiosNormalize.getCustomDictionary() }, null, 2), filename, 'application/json');
+    const backup = {
+      app: 'cambiosTAR',
+      exported_at: new Date().toISOString(),
+      records: (records || []).map(sanitizeRecordForBackup),
+      custom_tar_dictionary: window.CambiosNormalize.getCustomDictionary(),
+      settings: { schema: 1 }
+    };
+    downloadBlob(JSON.stringify(backup, null, 2), filename, 'application/json');
   }
 
   function exportXLSX(records, filename = 'cambiosTAR_registros.xlsx') {
@@ -209,5 +237,5 @@
     return sheet.rows;
   }
 
-  window.CambiosIO = { EXPECTED, normalizeHeader, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, downloadBlob, exportCSV, exportJSON, exportXLSX, templateXLSX, hasXlsxLibrary, guessMapping, worksheetToRows, readExcelWorkbook, readExcel };
+  window.CambiosIO = { EXPECTED, normalizeHeader, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, sanitizeRecordForBackup, downloadBlob, exportCSV, exportJSON, exportXLSX, templateXLSX, hasXlsxLibrary, guessMapping, worksheetToRows, readExcelWorkbook, readExcel };
 }());
