@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="cambiosTAR: herramienta local con Streamlit para registrar, seudonimizar y analizar cambios de tratamiento antirretroviral." />
-  <title>cambiosTAR · Análisis local de cambios TAR</title>
+  <meta name="description" content="cambiosTAR: aplicación local en Streamlit para registrar, importar, seudonimizar y analizar cambios de tratamiento antirretroviral." />
+  <title>cambiosTAR · App local de cambios TAR</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,8 +15,9 @@
         <span>cambiosTAR</span>
       </a>
       <div class="nav-links">
+        <a href="#uso-diario">Uso diario</a>
+        <a href="#historico">Carga inicial</a>
         <a href="#instalacion">Instalación</a>
-        <a href="#analisis">Análisis</a>
         <a href="#proteccion-datos">Protección de datos</a>
       </div>
     </nav>
@@ -25,32 +26,32 @@
   <main id="inicio">
     <section class="hero section-shell">
       <div class="hero-copy">
-        <p class="eyebrow">Herramienta local · Streamlit · Seudonimización</p>
+        <p class="eyebrow">App local · Streamlit · SQLite · Seudonimización</p>
         <h1>cambiosTAR</h1>
-        <h2>Registro y análisis local de cambios de tratamiento antirretroviral</h2>
+        <h2>Registro diario y análisis longitudinal de cambios TAR</h2>
         <p class="hero-text">
-          Herramienta diseñada para transformar un Excel histórico de cambios de TAR en un sistema local de análisis longitudinal,
-          seguro y seudonimizado.
+          cambiosTAR permite importar un histórico previo desde Excel, registrar nuevos cambios de tratamiento antirretroviral
+          diariamente y analizar la evolución acumulada en una base local persistente.
         </p>
         <div class="hero-actions" aria-label="Accesos rápidos">
-          <a class="button primary" href="#instalacion">Ver instalación local</a>
-          <a class="button secondary" href="#analisis">Ver módulos de análisis</a>
-          <a class="button ghost" href="#proteccion-datos">Ver aviso de protección de datos</a>
+          <a class="button primary" href="#instalacion">Instalar app local</a>
+          <a class="button secondary" href="#uso-diario">Ver uso diario</a>
+          <a class="button ghost" href="#proteccion-datos">Ver privacidad</a>
         </div>
       </div>
       <aside class="hero-card" aria-label="Resumen de seguridad y flujo local">
-        <div class="status-pill">Sin carga web de datos</div>
+        <div class="status-pill">GitHub Pages no procesa datos</div>
         <div class="mini-flow">
           <span>Excel histórico</span>
           <strong>→</strong>
-          <span>Streamlit local</span>
+          <span>SQLite local</span>
           <strong>→</strong>
-          <span>Exportación seudonimizada</span>
+          <span>Informes seudonimizados</span>
         </div>
         <div class="hero-metrics">
-          <div><strong>5</strong><span>columnas requeridas</span></div>
-          <div><strong>8</strong><span>módulos analíticos</span></div>
-          <div><strong>0</strong><span>procesamiento en GitHub Pages</span></div>
+          <div><strong>5</strong><span>variables de entrada</span></div>
+          <div><strong>10</strong><span>módulos operativos</span></div>
+          <div><strong>0</strong><span>datos reales en GitHub Pages</span></div>
         </div>
       </aside>
     </section>
@@ -58,74 +59,92 @@
     <section class="security-banner section-shell" role="note" aria-label="Aviso principal de seguridad">
       <div class="security-icon">🛡️</div>
       <p>
-        <strong>Esta página no procesa datos clínicos.</strong> No cargues datos reales en GitHub ni los subas al repositorio.
-        La aplicación operativa se ejecuta exclusivamente en local mediante Streamlit.
+        <strong>Esta página es solo documentación pública.</strong> La aplicación real se ejecuta en local con Streamlit,
+        guarda la información en SQLite y seudonimiza el número de historia clínica antes de persistir cualquier registro.
       </p>
     </section>
 
     <section class="section-shell" id="que-permite">
       <div class="section-heading">
-        <p class="eyebrow">Capacidades</p>
-        <h2>Qué permite hacer</h2>
-        <p>Un flujo completo para revisar cambios de tratamiento sin ampliar el modelo de datos con variables clínicas manuales nuevas.</p>
+        <p class="eyebrow">Objetivo operativo</p>
+        <h2>Una herramienta local acumulativa, no un analizador puntual</h2>
+        <p>El flujo está pensado para uso longitudinal: histórico inicial, registro diario, análisis evolutivo e informes periódicos.</p>
       </div>
       <div class="card-grid features-grid">
-        <article class="feature-card"><span>📥</span><h3>Cargar y validar</h3><p>Importa un Excel histórico y comprueba que incluya las columnas obligatorias.</p></article>
-        <article class="feature-card"><span>🧭</span><h3>Normalizar motivos</h3><p>Clasifica el motivo en cinco bloques definidos y mantiene el texto original.</p></article>
-        <article class="feature-card"><span>🔐</span><h3>Seudonimizar en local</h3><p>Transforma identificadores con SHA-256 y una clave privada almacenada en <code>.env</code>.</p></article>
-        <article class="feature-card"><span>📈</span><h3>Tendencias temporales</h3><p>Analiza cambios por año, mes y evolución acumulada.</p></article>
-        <article class="feature-card"><span>🎯</span><h3>Motivos de cambio</h3><p>Visualiza distribución global, evolución y auditoría de reclasificación.</p></article>
-        <article class="feature-card"><span>🔁</span><h3>Transiciones TAR</h3><p>Identifica patrones TAR antiguo → TAR nuevo y su relación con motivos.</p></article>
-        <article class="feature-card"><span>🌊</span><h3>Sankey de cambios</h3><p>Representa flujos principales entre pautas para comunicar transiciones complejas.</p></article>
-        <article class="feature-card"><span>📤</span><h3>Exportar resultados</h3><p>Genera una salida seudonimizada bajo descarga voluntaria del usuario.</p></article>
+        <article class="feature-card"><span>📥</span><h3>Importar histórico</h3><p>Carga un Excel previo, mapea columnas, previsualiza errores y evita duplicados exactos.</p></article>
+        <article class="feature-card"><span>📝</span><h3>Registrar cada día</h3><p>Añade nuevos cambios mediante formulario con fecha, historia, TAR antiguo, TAR nuevo y motivo.</p></article>
+        <article class="feature-card"><span>🗄️</span><h3>Persistir en SQLite</h3><p>Guarda la base acumulada en <code>cambiosTAR_local.db</code>, siempre en el equipo del usuario.</p></article>
+        <article class="feature-card"><span>🔐</span><h3>Seudonimizar antes de guardar</h3><p>Transforma el número de historia con SHA-256 y <code>SECRET_KEY</code> almacenada en <code>.env</code>.</p></article>
+        <article class="feature-card"><span>📈</span><h3>Analizar evolución</h3><p>Revisa tendencias anuales, mensuales, acumuladas y por motivo.</p></article>
+        <article class="feature-card"><span>🔁</span><h3>Estudiar transiciones TAR</h3><p>Identifica patrones TAR antiguo → TAR nuevo, rankings y Sankey si Plotly está disponible.</p></article>
+        <article class="feature-card"><span>👤</span><h3>Trayectoria por paciente</h3><p>Consulta líneas temporales y secuencias TAR por paciente seudonimizado.</p></article>
+        <article class="feature-card"><span>📄</span><h3>Informes y exportaciones</h3><p>Genera salidas seudonimizadas en Excel o HTML por periodos definidos.</p></article>
       </div>
     </section>
 
     <section class="section-shell split-section" id="columnas">
       <div class="section-heading align-left">
         <p class="eyebrow">Modelo mínimo</p>
-        <h2>Columnas necesarias</h2>
-        <p>La app usa únicamente estas cinco columnas del Excel histórico. No se solicitan variables clínicas manuales adicionales.</p>
+        <h2>Variables de entrada</h2>
+        <p>La app usa únicamente estas cinco variables. No solicita variables clínicas manuales adicionales.</p>
       </div>
       <div class="column-cards" aria-label="Cinco columnas requeridas">
-        <div class="column-card"><span>01</span><strong>Marca temporal</strong><small>Fecha/hora del registro</small></div>
-        <div class="column-card"><span>02</span><strong>Número de historia clínico</strong><small>Solo para seudonimización local</small></div>
+        <div class="column-card"><span>01</span><strong>Marca temporal o fecha</strong><small>Fecha del cambio</small></div>
+        <div class="column-card"><span>02</span><strong>Número de historia clínico</strong><small>Solo para hash local</small></div>
         <div class="column-card"><span>03</span><strong>TAR antiguo</strong><small>Pauta previa</small></div>
         <div class="column-card"><span>04</span><strong>TAR nuevo</strong><small>Pauta posterior</small></div>
-        <div class="column-card"><span>05</span><strong>Motivo</strong><small>Texto original del cambio</small></div>
+        <div class="column-card"><span>05</span><strong>Motivo</strong><small>Texto original</small></div>
       </div>
+    </section>
+
+    <section class="section-shell tinted" id="uso-diario">
+      <div class="section-heading">
+        <p class="eyebrow">Uso diario</p>
+        <h2>Trabajo operativo habitual</h2>
+      </div>
+      <ol class="workflow" aria-label="Flujo de uso diario">
+        <li><span>Registrar nuevo cambio</span></li>
+        <li><span>Consultar dashboard</span></li>
+        <li><span>Analizar evolución</span></li>
+        <li><span>Generar informe periódico</span></li>
+      </ol>
+    </section>
+
+    <section class="section-shell" id="historico">
+      <div class="section-heading">
+        <p class="eyebrow">Carga inicial del histórico</p>
+        <h2>El Excel previo se importa para crear la base acumulada</h2>
+        <p>
+          La importación histórica se realiza en la app local. El usuario carga el Excel, mapea columnas si es necesario,
+          revisa la previsualización, identifica errores y posibles duplicados, y guarda únicamente registros seudonimizados.
+        </p>
+      </div>
+      <ol class="workflow" aria-label="Flujo Excel histórico a SQLite local">
+        <li><span>Excel histórico</span></li>
+        <li><span>Mapeo de columnas</span></li>
+        <li><span>Validación</span></li>
+        <li><span>Seudonimización local</span></li>
+        <li><span>SQLite acumulada</span></li>
+      </ol>
     </section>
 
     <section class="section-shell tinted" id="analisis">
       <div class="section-heading">
         <p class="eyebrow">Módulos</p>
-        <h2>Análisis incluidos</h2>
+        <h2>Análisis incluidos en Streamlit local</h2>
       </div>
       <div class="analysis-grid">
         <div>Dashboard general</div>
-        <div>Evolución anual y mensual</div>
-        <div>Distribución de motivos</div>
-        <div>Comparación entre motivos originales y normalizados</div>
-        <div>Transiciones TAR antiguo → TAR nuevo</div>
-        <div>Sankey de cambios</div>
-        <div>Trayectoria longitudinal por paciente seudonimizado</div>
+        <div>Nuevo cambio diario</div>
+        <div>Importación histórica con mapeo</div>
+        <div>Exploración, edición y borrado</div>
+        <div>Evolución anual, mensual y acumulada</div>
+        <div>Distribución y auditoría de motivos</div>
+        <div>Transiciones TAR y Sankey</div>
+        <div>Trayectoria por paciente seudonimizado</div>
+        <div>Informes periódicos</div>
         <div>Exportación seudonimizada</div>
       </div>
-    </section>
-
-    <section class="section-shell" id="flujo">
-      <div class="section-heading">
-        <p class="eyebrow">Proceso operativo</p>
-        <h2>Flujo de trabajo</h2>
-      </div>
-      <ol class="workflow" aria-label="Flujo Excel histórico a exportación">
-        <li><span>Excel histórico</span></li>
-        <li><span>Validación</span></li>
-        <li><span>Limpieza</span></li>
-        <li><span>Seudonimización local</span></li>
-        <li><span>Análisis</span></li>
-        <li><span>Exportación</span></li>
-      </ol>
     </section>
 
     <section class="section-shell install-section" id="instalacion">
@@ -142,6 +161,7 @@ source .venv/bin/activate        # Linux/macOS
 .venv\Scripts\activate           # Windows PowerShell
 pip install -r requirements.txt
 cp .env.example .env             # Windows: copy .env.example .env
+# edita .env y cambia SECRET_KEY
 streamlit run app.py</code></pre>
       </div>
     </section>
@@ -152,10 +172,10 @@ streamlit run app.py</code></pre>
         <h2>Protección de datos</h2>
       </div>
       <div class="protection-grid">
-        <article><h3>Procesamiento local</h3><p>No se suben datos a servidores externos desde la aplicación. El análisis se realiza en la sesión local de Streamlit.</p></article>
-        <article><h3>Seudonimización</h3><p>El número de historia se transforma mediante SHA-256 y una clave local definida en <code>.env</code>.</p></article>
-        <article><h3>Gestión de secretos</h3><p>La clave debe almacenarse en <code>.env</code>. Ese archivo no debe subirse nunca a GitHub.</p></article>
-        <article><h3>Repositorio seguro</h3><p>Añade <code>.env</code>, datos reales y exportaciones sensibles a <code>.gitignore</code>. Los ejemplos deben ser siempre ficticios.</p></article>
+        <article><h3>Procesamiento local</h3><p>No se suben datos a servidores externos desde la aplicación. GitHub Pages no tiene carga ni procesamiento de datos.</p></article>
+        <article><h3>Seudonimización previa</h3><p>El número de historia se transforma mediante SHA-256 y una clave local antes de guardarse en SQLite.</p></article>
+        <article><h3>Gestión de secretos</h3><p>La clave debe almacenarse como <code>SECRET_KEY</code> en <code>.env</code>. Ese archivo nunca debe subirse a GitHub.</p></article>
+        <article><h3>Repositorio seguro</h3><p><code>.env</code>, <code>cambiosTAR_local.db</code>, Excel, CSV, exportaciones y datos reales están excluidos por <code>.gitignore</code>.</p></article>
       </div>
     </section>
   </main>
