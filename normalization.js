@@ -202,10 +202,10 @@
     const raw = String(reason || '').trim();
     const text = normalizeText(raw);
     if (!text) return { motivo_normalizado: '', motivo_detalle: '', motivo_original: raw, clasificado: false };
-    if (/fracaso|virolog|viral|rebote|virem|resist|carga viral/.test(text)) return { motivo_normalizado: 'Fracaso viral', motivo_detalle: '', motivo_original: raw, clasificado: true };
-    if (/advers|toxic|intoler|renal|hepatic|rash|nause|diarrea|efecto|secundari/.test(text)) return { motivo_normalizado: 'Efectos secundarios', motivo_detalle: '', motivo_original: raw, clasificado: true };
-    if (/interaccion|interacci|contraind|farmaco|medicament/.test(text)) return { motivo_normalizado: 'Interacciones', motivo_detalle: '', motivo_original: raw, clasificado: true };
-    if (/optim|simplific|biterapia|mejora|actualiz|comodidad|adherencia|switch|cambio proactivo|preferencia/.test(text)) return { motivo_normalizado: 'Optimización', motivo_detalle: '', motivo_original: raw, clasificado: true };
+    if (/fracaso|virolog|viral|rebote|virem|resist|carga viral|no supresion|fallo/.test(text)) return { motivo_normalizado: 'Fracaso viral', motivo_detalle: '', motivo_original: raw, clasificado: true };
+    if (/advers|toxic|intoler|renal|oseo|neuropsiquiatr|hepatic|rash|nause|diarrea|efecto|secundari/.test(text)) return { motivo_normalizado: 'Efectos secundarios', motivo_detalle: '', motivo_original: raw, clasificado: true };
+    if (/interaccion|interacci|contraindic|farmaco|medicament/.test(text)) return { motivo_normalizado: 'Interacciones', motivo_detalle: '', motivo_original: raw, clasificado: true };
+    if (/optim|simplific|biterapia|mejora|actualiz|comodidad|adherencia|switch|cambio proactivo|preferencia|pauta|reduccion/.test(text)) return { motivo_normalizado: 'Optimización', motivo_detalle: '', motivo_original: raw, clasificado: true };
     return { motivo_normalizado: 'Otros', motivo_detalle: raw, motivo_original: raw, clasificado: false };
   }
 
