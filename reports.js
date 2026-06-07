@@ -37,7 +37,7 @@
     const selected = filterPeriod(records, period);
     const patients = new Set(selected.map((r) => r.patient_id)).size;
     const [reason, reasonCount] = topValue(selected, 'motivo_normalizado');
-    const [transition, transitionCount] = topValue(selected, 'transicion_tar');
+    const [transition, transitionCount] = topValue(selected, 'transicion_tar_normalizada');
     const prev = previousPeriod(period);
     let comparison = 'no existen datos suficientes para comparar con el periodo previo';
     if (prev) {
@@ -48,7 +48,8 @@
       }
     }
     const comment = `Durante el periodo analizado se registraron ${selected.length} cambios de TAR en ${patients} pacientes. El motivo más frecuente fue ${reason} (${reasonCount}). La transición más frecuente fue ${transition} (${transitionCount}). En comparación con el periodo previo, ${comparison}.`;
-    return { period, records: selected, total: selected.length, patients, reasons: countBy(selected, 'motivo_normalizado'), transitions: countBy(selected, 'transicion_tar'), oldTar: countBy(selected, 'tar_antiguo'), newTar: countBy(selected, 'tar_nuevo'), comment };
+    const pending = selected.filter((r) => !r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado).length;
+    return { period, records: selected, total: selected.length, patients, reasons: countBy(selected, 'motivo_normalizado'), transitions: countBy(selected, 'transicion_tar_normalizada'), oldTar: countBy(selected, 'tar_antiguo_normalizado'), newTar: countBy(selected, 'tar_nuevo_normalizado'), pending, comment };
   }
 
   function tableFromObject(title, obj) {
@@ -57,7 +58,8 @@
   }
 
   function renderReport(report) {
-    return `<article class="report-card"><h3>Informe cambiosTAR · ${report.period.label}</h3><p><strong>Periodo analizado:</strong> ${report.period.from || 'inicio'} a ${report.period.to || 'fin'}</p><div class="metric-grid compact-metrics"><div class="metric"><span>Total cambios</span><strong>${report.total}</strong></div><div class="metric"><span>Pacientes</span><strong>${report.patients}</strong></div></div><p class="interpretation">${report.comment}</p>${tableFromObject('Distribución de motivos', report.reasons)}${tableFromObject('Principales transiciones', report.transitions)}${tableFromObject('Top TAR antiguos', report.oldTar)}${tableFromObject('Top TAR nuevos', report.newTar)}</article>`;
+    const pending = report.pending ? `<h4>Registros pendientes de revisar</h4><p class="alert warning">${report.pending} registros tienen TAR no reconocido o motivo sin clasificar y deben revisarse antes de análisis definitivos.</p>` : '';
+    return `<article class="report-card"><h3>Informe cambiosTAR · ${report.period.label}</h3><p><strong>Periodo analizado:</strong> ${report.period.from || 'inicio'} a ${report.period.to || 'fin'}</p><div class="metric-grid compact-metrics"><div class="metric"><span>Total cambios</span><strong>${report.total}</strong></div><div class="metric"><span>Pacientes</span><strong>${report.patients}</strong></div><div class="metric"><span>Pendientes de revisar</span><strong>${report.pending || 0}</strong></div></div><p class="interpretation">${report.comment}</p>${pending}${tableFromObject('Distribución de motivos normalizados', report.reasons)}${tableFromObject('Top transiciones normalizadas', report.transitions)}${tableFromObject('Top TAR antiguos normalizados', report.oldTar)}${tableFromObject('Top TAR nuevos normalizados', report.newTar)}</article>`;
   }
 
   window.CambiosReports = { countBy, topValue, filterPeriod, periodFromControls, generateReport, renderReport };

@@ -31,17 +31,17 @@
     makeChart('chart-reasons', 'doughnut', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Motivos');
     entries = sortedEntries(countBy(records.map((r) => ({ key: `${r.anio} · ${r.motivo_normalizado}` })), 'key'), 12);
     makeChart('chart-reasons-year', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Motivos por año');
-    entries = sortedEntries(countBy(records, 'tar_antiguo'), 10); makeChart('chart-old', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'TAR antiguos');
-    entries = sortedEntries(countBy(records, 'tar_nuevo'), 10); makeChart('chart-new', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'TAR nuevos');
-    entries = sortedEntries(countBy(records, 'transicion_tar'), 10); makeChart('chart-transitions', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Transiciones');
-    entries = sortedEntries(countBy(records.map((r) => ({ key: `${r.motivo_normalizado}: ${r.transicion_tar}` })), 'key'), 12); makeChart('chart-transition-reason', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Transiciones por motivo');
+    entries = sortedEntries(countBy(records, 'tar_antiguo_normalizado'), 10); makeChart('chart-old', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'TAR antiguos');
+    entries = sortedEntries(countBy(records, 'tar_nuevo_normalizado'), 10); makeChart('chart-new', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'TAR nuevos');
+    entries = sortedEntries(countBy(records, 'transicion_tar_normalizada'), 10); makeChart('chart-transitions', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Transiciones');
+    entries = sortedEntries(countBy(records.map((r) => ({ key: `${r.motivo_normalizado}: ${r.transicion_tar_normalizada || r.transicion_tar}` })), 'key'), 12); makeChart('chart-transition-reason', 'bar', entries.map((e) => e[0]), entries.map((e) => e[1]), 'Transiciones por motivo');
     renderSankey(records);
   }
 
   function renderSankey(records) {
     const el = document.getElementById('sankey-chart'); if (!el) return;
     if (!window.Plotly) { el.textContent = 'Sankey no disponible: Plotly no se ha cargado.'; return; }
-    const pairs = sortedEntries(window.CambiosReports.countBy(records, 'transicion_tar'), 20);
+    const pairs = sortedEntries(window.CambiosReports.countBy(records, 'transicion_tar_normalizada'), 20);
     const labels = Array.from(new Set(pairs.flatMap(([k]) => k.split(' → '))));
     const source = pairs.map(([k]) => labels.indexOf(k.split(' → ')[0]));
     const target = pairs.map(([k]) => labels.indexOf(k.split(' → ')[1]));

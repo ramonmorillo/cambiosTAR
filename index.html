@@ -11,6 +11,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="crypto.js"></script>
   <script defer src="storage.js"></script>
+  <script defer src="normalization.js"></script>
   <script defer src="import_export.js"></script>
   <script defer src="reports.js"></script>
   <script defer src="charts.js"></script>
@@ -69,6 +70,7 @@
         <article class="card">
           <h3>¿Dónde se guardan los datos?</h3>
           <p>Los registros se almacenan en IndexedDB dentro de este navegador. Si IndexedDB no estuviera disponible, la aplicación usa localStorage como respaldo. No se suben archivos ni registros a ningún servidor.</p>
+          <div class="alert info">Si se activa la búsqueda CIMA, solo se consulta el nombre del medicamento escrito en los campos TAR. Nunca se envían números de historia clínica ni datos de pacientes.</div>
           <ul class="check-list">
             <li>La copia de seguridad depende del usuario.</li>
             <li>No introduzca nombres, DNI, teléfonos, direcciones ni texto libre identificativo.</li>
@@ -103,9 +105,26 @@
         <div class="form-grid">
           <label>Fecha del cambio <input type="date" id="change-date" required /></label>
           <label>Número de historia clínica <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
-          <label>TAR antiguo <input type="text" id="old-tar" required placeholder="Ej.: TDF/FTC/EFV" /></label>
-          <label>TAR nuevo <input type="text" id="new-tar" required placeholder="Ej.: BIC/FTC/TAF" /></label>
-          <label class="full">Motivo <textarea id="reason" required rows="4" placeholder="No introduzca identificadores directos en texto libre"></textarea></label>
+          <label>TAR antiguo <input type="text" id="old-tar" required list="tar-options" placeholder="Ej.: Biktarvy o BIC/FTC/TAF" autocomplete="off" /><span id="old-tar-normalized" class="field-help">Se guardará como: —</span><span id="old-tar-warning" class="field-warning hidden">Tratamiento no reconocido. Puedes guardarlo como entrada manual normalizada.</span></label>
+          <label>TAR nuevo <input type="text" id="new-tar" required list="tar-options" placeholder="Ej.: BIC/FTC/TAF" autocomplete="off" /><span id="new-tar-normalized" class="field-help">Se guardará como: —</span><span id="new-tar-warning" class="field-warning hidden">Tratamiento no reconocido. Puedes guardarlo como entrada manual normalizada.</span></label>
+          <datalist id="tar-options"></datalist>
+          <div class="full alert info">Utiliza nombres comerciales o combinaciones. La herramienta intentará guardar una pauta normalizada para facilitar el análisis.</div>
+          <fieldset class="full manual-dict-box">
+            <legend>Entrada manual normalizada</legend>
+            <p class="small">Si un TAR no existe en el diccionario, añádelo al diccionario local del navegador sin interrumpir el registro.</p>
+            <div class="form-grid compact">
+              <label>Texto introducido <input type="text" id="manual-tar-text" placeholder="Ej.: pauta escrita por el usuario" /></label>
+              <label>Pauta normalizada <input type="text" id="manual-tar-normalized" placeholder="Ej.: ABC/3TC + DTG" /></label>
+            </div>
+            <button class="btn secondary" type="button" id="add-manual-tar-btn">Guardar en diccionario local</button>
+          </fieldset>
+          <div class="full alert info cima-box">
+            <label class="checkbox"><input id="cima-enabled" type="checkbox" /> Activar búsqueda CIMA opcional</label>
+            <p>Búsqueda CIMA opcional: solo se consulta el texto del medicamento, nunca datos del paciente.</p>
+            <p id="cima-status" class="small">Desactivada. La herramienta funciona con diccionario local.</p>
+          </div>
+          <label>Motivo <select id="reason-normalized" required><option value="">Seleccione motivo</option><option>Fracaso viral</option><option>Efectos secundarios</option><option>Optimización</option><option>Interacciones</option><option>Otros</option></select></label>
+          <label id="reason-detail-wrap" class="hidden">Especificar motivo <textarea id="reason-detail" rows="3" placeholder="Obligatorio si selecciona Otros. No introduzca identificadores directos."></textarea></label>
         </div>
         <div class="button-row"><button class="btn primary" type="submit">Guardar cambio</button><button class="btn ghost" type="reset">Limpiar formulario</button></div>
         <div id="record-message" class="message" aria-live="polite"></div>
@@ -115,7 +134,7 @@
     <section id="importar" class="view">
       <div class="section-title"><p class="eyebrow">Carga histórica</p><h2>Importar histórico Excel</h2></div>
       <article class="card">
-        <p>Seleccione un archivo <strong>.xlsx</strong>. Se lee únicamente en el navegador; no se sube a ningún servidor. Antes de importar se validan columnas, errores y posibles duplicados.</p>
+        <p>Seleccione un archivo <strong>.xlsx</strong>. Se lee únicamente en el navegador; no se sube a ningún servidor. Antes de importar se validan columnas, normalización TAR/motivos, errores y posibles duplicados.</p>
         <input id="excel-file" type="file" accept=".xlsx,.xls" />
         <div id="mapping-area" class="mapping-area hidden"></div>
         <div id="import-summary" class="summary-box"></div>
@@ -194,7 +213,7 @@
           <button class="btn secondary" id="export-period-btn">Exportar registros de periodo del informe</button>
           <button class="btn secondary" id="download-template-btn">Descargar plantilla Excel</button>
         </div>
-        <p class="small muted">La plantilla incluye: Fecha, Número de historia clínico, TAR antiguo, TAR nuevo y Motivo. No debe subirse a GitHub ni compartirse con datos reales.</p>
+        <p class="small muted">La plantilla incluye: Fecha, Número de historia clínico, TAR antiguo, TAR nuevo y Motivo. El backup JSON incluye también el diccionario TAR local personalizado. No debe subirse a GitHub ni compartirse con datos reales.</p>
       </article>
     </section>
   </main>
