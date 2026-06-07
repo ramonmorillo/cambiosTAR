@@ -1,5 +1,5 @@
 (function () {
-  const state = { records: [], filtered: [], excelRows: [], importValidated: [], lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
+  const state = { records: [], filtered: [], excelRows: [], importValidated: [], lastReport: null, claveConfigurada: false, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
@@ -12,6 +12,25 @@
   function normalizedNew(r) { return r.tar_nuevo_normalizado || r.tar_nuevo || ''; }
   function normalizedTransition(r) { return r.transicion_tar_normalizada || r.transicion_tar || `${normalizedOld(r)} → ${normalizedNew(r)}`; }
   function isPendingReview(r) { return !r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || !r.motivo_normalizado; }
+
+  function updateSecurityWarnings(message) {
+    const hasActiveKey = window.CambiosCrypto.hasPseudonymizationKey();
+    const hasSavedKey = window.CambiosCrypto.hasPersistedPseudonymizationKey();
+    state.claveConfigurada = hasActiveKey;
+
+    const keyStatus = $('key-status');
+    if (keyStatus) {
+      keyStatus.className = `alert ${hasActiveKey ? 'info' : 'warning'}`;
+      keyStatus.textContent = message || (hasActiveKey
+        ? (hasSavedKey ? 'Clave local disponible en este navegador.' : 'Hay una clave activa configurada para esta sesión.')
+        : 'No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
+    }
+
+    ['record-key-warning', 'import-key-warning'].forEach((id) => {
+      const warning = $(id);
+      if (warning) warning.classList.toggle('hidden', hasActiveKey);
+    });
+  }
 
   function showSection(id) {
     document.querySelectorAll('.view').forEach((section) => section.classList.toggle('active', section.id === id));
@@ -31,7 +50,9 @@
   }
 
   async function recordFromClinical(raw, origen) {
-    const patientId = raw.patient_id || await window.CambiosCrypto.pseudonymize(raw.historia);
+    const pseudonymizationKey = window.CambiosCrypto.getActivePseudonymizationKey();
+    if (!raw.patient_id && !pseudonymizationKey) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
+    const patientId = raw.patient_id || await window.CambiosCrypto.pseudonymize(raw.historia, pseudonymizationKey);
     return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, tar_antiguo_medicamentos: raw.tar_antiguo_medicamentos, tar_nuevo_medicamentos: raw.tar_nuevo_medicamentos, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: raw.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: raw.tar_nuevo_normalizacion_manual, origen, id: raw.id });
   }
 
@@ -203,6 +224,7 @@
   async function validateExcel() {
     try {
       const mapping = ['fecha', 'historia', 'tar_antiguo', 'tar_nuevo', 'motivo'].reduce((acc, field) => { acc[field] = $(`map-${field}`).value; return acc; }, {});
+      if (!window.CambiosCrypto.getActivePseudonymizationKey()) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
       if (Object.values(mapping).some((v) => !v)) throw new Error('Debe mapear todas las columnas esperadas.');
       const existing = duplicateSet();
       const valid = []; const errors = []; const duplicates = []; const warnings = [];
@@ -275,6 +297,7 @@
     document.querySelectorAll('[data-section-link]').forEach((el) => el.addEventListener('click', (e) => { e.preventDefault(); showSection(el.dataset.sectionLink); }));
     $('menu-toggle').addEventListener('click', () => $('top-nav').classList.toggle('open'));
     $('record-form').addEventListener('submit', handleManualSubmit);
+    window.addEventListener('pseudonymization-key-changed', () => updateSecurityWarnings());
     $('record-form').addEventListener('reset', () => setTimeout(() => { resetTarBuilders(); toggleReasonDetail(); }, 0));
     ['old', 'new'].forEach((kind) => {
       $(`${kind}-cima-search`).addEventListener('click', () => searchCimaFor(kind));
@@ -289,10 +312,27 @@
       if (e.target.dataset.removeMed) { state.tarBuilders[e.target.dataset.removeMed].medicamentos.splice(Number(e.target.dataset.index), 1); $(`${e.target.dataset.removeMed}-normalized-manual`).dataset.manualEdited = ''; renderTarBuilder(e.target.dataset.removeMed); }
     });
     $('reason-normalized').addEventListener('change', toggleReasonDetail);
-    $('save-key-btn').addEventListener('click', () => { if (window.CambiosCrypto.setKey($('security-key').value, $('save-key').checked)) { $('security-key').value = ''; $('key-status').textContent = 'Clave configurada. No se mostrará en exportaciones.'; toast('Clave configurada.'); } else toast('Introduzca una clave válida.', 'error'); });
-    $('check-key-btn').addEventListener('click', () => toast(window.CambiosCrypto.hasKey() ? 'Hay una clave configurada.' : 'No hay clave configurada.', window.CambiosCrypto.hasKey() ? 'ok' : 'error'));
-    $('clear-key-btn').addEventListener('click', () => { window.CambiosCrypto.clearKey(); toast('Clave olvidada en este navegador.'); });
-    $('delete-all-btn').addEventListener('click', async () => { if (confirm('Primera confirmación: ¿borrar todos los datos locales?') && confirm('Segunda confirmación: esta acción no se puede deshacer.')) { await window.CambiosStorage.clearAll(); window.CambiosNormalize.clearLocalNormalizationConfig(); window.CambiosCrypto.clearKey(); await refresh(); toast('Todos los datos locales han sido borrados.'); } });
+    $('save-key-btn').addEventListener('click', () => {
+      if (window.CambiosCrypto.setPseudonymizationKey($('security-key').value, $('save-key').checked)) {
+        $('security-key').value = '';
+        updateSecurityWarnings('Clave local configurada correctamente. Ya puede registrar cambios reales.');
+        toast('Clave local configurada correctamente. Ya puede registrar cambios reales.');
+      } else {
+        updateSecurityWarnings();
+        toast('Introduzca una clave válida.', 'error');
+      }
+    });
+    $('check-key-btn').addEventListener('click', () => {
+      const hasActiveKey = window.CambiosCrypto.hasPseudonymizationKey();
+      const hasSavedKey = window.CambiosCrypto.hasPersistedPseudonymizationKey();
+      const message = hasActiveKey
+        ? `Hay una clave activa configurada para esta sesión.${hasSavedKey ? ' La clave está guardada en este navegador.' : ''}`
+        : 'No hay clave activa configurada.';
+      updateSecurityWarnings(message);
+      toast(message, hasActiveKey ? 'ok' : 'error');
+    });
+    $('clear-key-btn').addEventListener('click', () => { window.CambiosCrypto.clearPseudonymizationKey(); updateSecurityWarnings(); toast('Clave olvidada en este navegador.'); });
+    $('delete-all-btn').addEventListener('click', async () => { if (confirm('Primera confirmación: ¿borrar todos los datos locales?') && confirm('Segunda confirmación: esta acción no se puede deshacer.')) { await window.CambiosStorage.clearAll(); window.CambiosNormalize.clearLocalNormalizationConfig(); window.CambiosCrypto.clearPseudonymizationKey(); updateSecurityWarnings(); await refresh(); toast('Todos los datos locales han sido borrados.'); } });
     $('excel-file').addEventListener('change', async (e) => { const file = e.target.files[0]; if (!file) return; state.excelRows = await window.CambiosIO.readExcel(file); renderMapping(Object.keys(state.excelRows[0] || {})); $('validate-excel-btn').disabled = false; $('import-summary').textContent = `${state.excelRows.length} registros detectados.`; });
     $('validate-excel-btn').addEventListener('click', validateExcel); $('import-valid-btn').addEventListener('click', importValidated);
     ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient'].forEach((id) => $(id).addEventListener('input', applyFilters));
@@ -320,5 +360,7 @@
     $('report-month').value = new Date().getMonth() + 1;
   }
 
-  document.addEventListener('DOMContentLoaded', async () => { bindEvents(); initDates(); await refresh(); showSection(location.hash?.slice(1) || 'inicio'); });
+  window.updateSecurityWarnings = updateSecurityWarnings;
+
+  document.addEventListener('DOMContentLoaded', async () => { bindEvents(); initDates(); updateSecurityWarnings(); await refresh(); showSection(location.hash?.slice(1) || 'inicio'); });
 }());
