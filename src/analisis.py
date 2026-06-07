@@ -12,6 +12,7 @@ def resumen_general(df: pd.DataFrame) -> dict[str, object]:
 
     por_anio = cambios_por_año(df)
     por_motivo = distribucion_motivo(df)
+    por_tar_nuevo = ranking_tar_nuevo(df, limite=1)
     por_transicion = ranking_transiciones(df, limite=1)
 
     return {
@@ -20,6 +21,7 @@ def resumen_general(df: pd.DataFrame) -> dict[str, object]:
         "cambios_por_paciente": cambios_por_paciente,
         "año_mas_cambios": "—" if por_anio.empty else int(por_anio.sort_values("cambios", ascending=False).iloc[0]["año"]),
         "motivo_frecuente": "—" if por_motivo.empty else str(por_motivo.iloc[0]["motivo_normalizado"]),
+        "tar_nuevo_frecuente": "—" if por_tar_nuevo.empty else str(por_tar_nuevo.iloc[0]["TAR nuevo"]),
         "transicion_frecuente": "—" if por_transicion.empty else str(por_transicion.iloc[0]["transición TAR"]),
     }
 
@@ -64,6 +66,26 @@ def auditoria_motivos(df: pd.DataFrame) -> pd.DataFrame:
         .size()
         .rename(columns={"size": "registros"})
         .sort_values(["motivo_normalizado", "registros"], ascending=[True, False])
+    )
+
+
+def ranking_tar_antiguo(df: pd.DataFrame, limite: int = 10) -> pd.DataFrame:
+    return (
+        df.groupby("TAR antiguo", as_index=False)
+        .size()
+        .rename(columns={"size": "cambios"})
+        .sort_values("cambios", ascending=False)
+        .head(limite)
+    )
+
+
+def ranking_tar_nuevo(df: pd.DataFrame, limite: int = 10) -> pd.DataFrame:
+    return (
+        df.groupby("TAR nuevo", as_index=False)
+        .size()
+        .rename(columns={"size": "cambios"})
+        .sort_values("cambios", ascending=False)
+        .head(limite)
     )
 
 

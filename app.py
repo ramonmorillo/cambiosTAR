@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
@@ -14,6 +15,8 @@ from src.analisis import (
     distribucion_motivo,
     evolucion_mensual_acumulada,
     motivos_por_año,
+    ranking_tar_antiguo,
+    ranking_tar_nuevo,
     ranking_transiciones,
     resumen_general,
     trayectoria_paciente,
@@ -101,7 +104,7 @@ def formato_rango_temporal(df: pd.DataFrame) -> str:
 def tarjeta_privacidad() -> None:
     st.markdown(
         '<div class="privacy-box">Esta herramienta funciona en local. No subas datos reales a GitHub. '
-        'El número de historia clínica se seudonimiza y no se muestra ni se exporta.</div>',
+        'El número de historia clínica se seudonimiza con SHA-256 y no se muestra ni se exporta.</div>',
         unsafe_allow_html=True,
     )
 
@@ -133,6 +136,7 @@ if archivo is None:
         st.write("1. Crea un archivo `.env` local con `PSEUDONYM_SECRET_KEY`.")
         st.write("2. Carga un Excel histórico con las 5 columnas obligatorias.")
         st.write("3. Revisa los análisis y exporta únicamente la base seudonimizada si la necesitas.")
+        st.warning("Si no existe una clave local válida, la app detiene el procesamiento para evitar trabajar con datos reales sin seudonimización.")
         st.markdown("</div>", unsafe_allow_html=True)
     with col_b:
         st.markdown("### Variables derivadas automáticas")
@@ -165,9 +169,9 @@ else:
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Total cambios", resumen["cambios"])
     c2.metric("Pacientes", resumen["pacientes"])
-    c3.metric("Cambios/paciente", resumen["cambios_por_paciente"])
-    c4.metric("Año pico", resumen["año_mas_cambios"])
-    c5.metric("Motivo frecuente", resumen["motivo_frecuente"])
+    c3.metric("Año pico", resumen["año_mas_cambios"])
+    c4.metric("Motivo frecuente", resumen["motivo_frecuente"])
+    c5.metric("TAR nuevo frecuente", resumen["tar_nuevo_frecuente"])
     c6.metric("Transición frecuente", resumen["transicion_frecuente"])
 
     tab_temporal, tab_motivo, tab_transiciones, tab_trayectoria, tab_export = st.tabs(
@@ -186,6 +190,15 @@ else:
             px.bar(motivos_por_año(datos), x="año", y="cambios", color="motivo_normalizado", title="Distribución anual por motivo"),
             use_container_width=True,
         )
+        col_top1, col_top2 = st.columns(2)
+        col_top1.plotly_chart(
+            px.bar(ranking_tar_antiguo(datos), x="cambios", y="TAR antiguo", orientation="h", title="Top TAR antiguos"),
+            use_container_width=True,
+        )
+        col_top2.plotly_chart(
+            px.bar(ranking_tar_nuevo(datos), x="cambios", y="TAR nuevo", orientation="h", title="Top TAR nuevos"),
+            use_container_width=True,
+        )
 
     with tab_motivo:
         motivos = distribucion_motivo(datos)
@@ -201,6 +214,10 @@ else:
         ranking = ranking_transiciones(datos, limite=50)
         st.subheader("Ranking de transiciones más frecuentes")
         st.dataframe(ranking, use_container_width=True, hide_index=True)
+        st.plotly_chart(
+            px.bar(ranking.head(15), x="cambios", y="transición TAR", orientation="h", title="Top transiciones TAR"),
+            use_container_width=True,
+        )
         col_tr1, col_tr2 = st.columns(2)
         col_tr1.plotly_chart(px.bar(transiciones_por_año(datos), x="año", y="cambios", color="transición TAR", title="Transiciones por año"), use_container_width=True)
         col_tr2.plotly_chart(
@@ -235,13 +252,20 @@ else:
 
     with tab_export:
         exportable = preparar_exportacion(datos)
-        st.write("Descarga un CSV seudonimizado. Se excluye siempre el número de historia clínica original.")
-        csv = exportable.to_csv(index=False).encode("utf-8-sig")
-        nombre = f"cambiosTAR_seudonimizado_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-        st.download_button("Exportar CSV seudonimizado", csv, file_name=nombre, mime="text/csv")
+        st.write("Descarga un Excel seudonimizado. Se excluye siempre el número de historia clínica original.")
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            exportable.to_excel(writer, index=False, sheet_name="cambios_seudonimizados")
+        nombre = f"cambiosTAR_seudonimizado_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        st.download_button(
+            "Exportar Excel seudonimizado",
+            buffer.getvalue(),
+            file_name=nombre,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         st.dataframe(exportable, use_container_width=True, hide_index=True)
 
 st.markdown(
-    '<div class="footer">cambiosTAR · Herramienta local de análisis de cambios de TAR · Ramón Morillo</div>',
+    '<div class="footer">cambiosTAR · Herramienta local de análisis de cambios de TAR · Ramón Morillo · 2026</div>',
     unsafe_allow_html=True,
 )

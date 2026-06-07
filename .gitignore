@@ -1,25 +1,13 @@
-# Entorno local y secretos
 .env
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-
-# Datos clínicos o generados localmente
-*.xls
 *.xlsx
+*.xls
 *.csv
-*.db
-*.sqlite
-*.sqlite3
-data/*
-exports/*
-
-# Mantener estructura de carpetas; los Excel se generan localmente y no se versionan
-!data/.gitkeep
-!exports/.gitkeep
-!diccionarios/.gitkeep
-
-# Archivos de sistema y Streamlit local
+exports/
+data/real/
+__pycache__/
+.venv/
 .DS_Store
+# Entornos, cachés y secretos adicionales
+venv/
+*.py[cod]
 .streamlit/secrets.toml
