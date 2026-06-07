@@ -9,8 +9,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ENV_PATH = Path(".env")
-SECRET_ENV_VAR = "PSEUDONYM_SECRET_KEY"
-PLACEHOLDER_SECRET = "CAMBIA_ESTA_CLAVE_LOCAL_POR_UNA_CLAVE_LARGA_Y_PRIVADA"
+SECRET_ENV_VAR = "SECRET_KEY"
+PLACEHOLDER_SECRET = "CAMBIAR_ESTA_CLAVE_POR_UNA_CLAVE_LOCAL_SEGURA"
 
 
 def cargar_clave_secreta(env_path: Path = ENV_PATH) -> str:
@@ -18,7 +18,7 @@ def cargar_clave_secreta(env_path: Path = ENV_PATH) -> str:
     load_dotenv(env_path)
     clave = os.getenv(SECRET_ENV_VAR, "").strip()
     if not clave:
-        raise RuntimeError("Debe configurar PSEUDONYM_SECRET_KEY en el archivo .env antes de procesar datos reales.")
+        raise RuntimeError("Debe configurar SECRET_KEY en el archivo .env antes de procesar datos reales.")
     if clave == PLACEHOLDER_SECRET:
         raise RuntimeError(
             "La clave de .env sigue siendo la de ejemplo. Cámbiela por una clave local privada antes de procesar datos reales."

@@ -11,3 +11,4 @@ __pycache__/
 venv/
 *.py[cod]
 .streamlit/secrets.toml
+cambiosTAR_local.db
