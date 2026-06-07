@@ -1,14 +1,26 @@
 (function () {
   const EXPECTED = {
-    fecha: ['fecha', 'marca temporal', 'timestamp', 'date'],
-    historia: ['número de historia clínico', 'numero de historia clinico', 'número de historia clínica', 'numero de historia clinica', 'historia', 'nhc'],
-    tar_antiguo: ['tar antiguo', 'tratamiento antiguo', 'pauta antigua'],
-    tar_nuevo: ['tar nuevo', 'tratamiento nuevo', 'pauta nueva'],
-    motivo: ['motivo', 'razón', 'razon', 'causa']
+    fecha: ['fecha', 'fecha cambio', 'fecha del cambio', 'marca temporal', 'timestamp', 'marca de tiempo', 'fecha registro', 'date'],
+    historia: ['numero de historia clinica', 'numero de historia clinico', 'numero historia', 'nhc', 'historia clinica', 'historia clinico', 'numero de historia', 'n historia', 'no historia', 'historia'],
+    tar_antiguo: ['tar antiguo', 'tar previo', 'tar anterior', 'tratamiento anterior', 'tratamiento previo', 'tratamiento antiguo', 'pauta previa', 'pauta anterior', 'pauta antigua'],
+    tar_nuevo: ['tar nuevo', 'tar actual', 'tar posterior', 'tratamiento nuevo', 'tratamiento actual', 'tratamiento posterior', 'nueva pauta', 'pauta nueva'],
+    motivo: ['motivo', 'motivo cambio', 'motivo del cambio', 'causa', 'causa del cambio', 'razon', 'razon del cambio']
   };
 
+  function normalizeHeader(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/n[º°]/g, 'n')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function normalizeText(value) {
-    return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return normalizeHeader(value);
   }
 
   function normalizeReason(reason) {
@@ -69,6 +81,7 @@
       tar_antiguo_reconocido: Boolean(oldNorm.reconocido),
       tar_nuevo_reconocido: Boolean(newNorm.reconocido),
       motivo_clasificado: Boolean(classified.clasificado || motivo_normalizado),
+      estado_normalizacion_tar: (!oldNorm.reconocido || !newNorm.reconocido) ? 'pendiente_revision' : 'normalizado',
       anio: year,
       mes: month,
       trimestre: quarter,
@@ -95,6 +108,7 @@
       motivo_normalizado: r.motivo_normalizado,
       motivo_detalle: r.motivo_detalle || '',
       motivo_original: r.motivo_original || '',
+      estado_normalizacion_tar: r.estado_normalizacion_tar || ((!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido) ? 'pendiente_revision' : 'normalizado'),
       origen: r.origen,
       fecha_creacion: r.fecha_creacion,
       anio: r.anio,
@@ -149,22 +163,51 @@
     XLSX.writeFile(wb, 'plantilla_cambiosTAR.xlsx');
   }
 
+  function hasXlsxLibrary() {
+    return Boolean(window.XLSX && window.XLSX.read && window.XLSX.utils && window.XLSX.utils.sheet_to_json);
+  }
+
   function guessMapping(headers) {
     const mapping = {};
-    Object.entries(EXPECTED).forEach(([field, aliases]) => {
-      const found = headers.find((h) => aliases.includes(normalizeText(h)) || aliases.some((a) => normalizeText(h).includes(normalizeText(a))));
+    const normalizedAliases = Object.fromEntries(Object.entries(EXPECTED).map(([field, aliases]) => [field, aliases.map(normalizeHeader)]));
+    Object.entries(normalizedAliases).forEach(([field, aliases]) => {
+      const found = headers.find((h) => {
+        const normalized = normalizeHeader(h);
+        return aliases.includes(normalized) || aliases.some((alias) => normalized.includes(alias) || alias.includes(normalized));
+      });
       if (found) mapping[field] = found;
     });
     return mapping;
   }
 
-  function readExcel(file) {
-    return file.arrayBuffer().then((buffer) => {
-      const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      return XLSX.utils.sheet_to_json(sheet, { defval: '' });
-    });
+  function rowHasData(row) {
+    return Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== '');
   }
 
-  window.CambiosIO = { EXPECTED, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, downloadBlob, exportCSV, exportJSON, exportXLSX, templateXLSX, guessMapping, readExcel };
+  function worksheetToRows(sheet) {
+    if (!sheet) return { rows: [], headers: [] };
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true, blankrows: false });
+    const headerIndex = matrix.findIndex(rowHasData);
+    if (headerIndex < 0) return { rows: [], headers: [] };
+    const headers = matrix[headerIndex].map((header, index) => String(header || `Columna ${index + 1}`).trim());
+    const rows = XLSX.utils.sheet_to_json(sheet, { range: headerIndex, defval: '', raw: true, blankrows: false })
+      .filter((row) => Object.values(row).some((value) => String(value ?? '').trim() !== ''));
+    return { rows, headers };
+  }
+
+  async function readExcelWorkbook(file) {
+    if (!hasXlsxLibrary()) throw new Error('La librería XLSX no está disponible.');
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheets = (workbook.SheetNames || []).map((name) => ({ name, ...worksheetToRows(workbook.Sheets[name]) }));
+    return { workbook, sheets };
+  }
+
+  async function readExcel(file) {
+    const result = await readExcelWorkbook(file);
+    const sheet = result.sheets.find((item) => item.rows.length) || result.sheets[0] || { rows: [] };
+    return sheet.rows;
+  }
+
+  window.CambiosIO = { EXPECTED, normalizeHeader, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, downloadBlob, exportCSV, exportJSON, exportXLSX, templateXLSX, hasXlsxLibrary, guessMapping, worksheetToRows, readExcelWorkbook, readExcel };
 }());

@@ -1,5 +1,5 @@
 (function () {
-  const state = { records: [], filtered: [], excelRows: [], importValidated: [], lastReport: null, claveConfigurada: false, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
+  const state = { records: [], filtered: [], selectedExcelFile: null, excelWorkbook: null, excelSheets: [], excelHeaders: [], excelRows: [], importValidated: [], importDuplicatesOmitted: 0, lastReport: null, claveConfigurada: false, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
@@ -214,53 +214,162 @@
     await window.CambiosStorage.deleteRecord(id); toast('Registro eliminado.'); await refresh();
   }
 
-  function renderMapping(headers) {
+  function renderImportMessage(message, type = 'info') {
+    $('import-summary').innerHTML = `<div class="alert ${type}">${escapeHtml(message)}</div>`;
+  }
+
+  function selectSheetWithData(sheets) {
+    if (!Array.isArray(sheets) || !sheets.length) return null;
+    const selectedName = $('excel-sheet-select')?.value;
+    return sheets.find((sheet) => sheet.name === selectedName) || sheets.find((sheet) => sheet.rows.length) || sheets[0];
+  }
+
+  function renderColumnTable(headers) {
+    return `<div class="table-wrap"><table><thead><tr><th>#</th><th>Columna detectada</th><th>Cabecera normalizada</th></tr></thead><tbody>${headers.map((header, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(header)}</td><td>${escapeHtml(window.CambiosIO.normalizeHeader(header))}</td></tr>`).join('') || '<tr><td colspan="3">No se han detectado columnas.</td></tr>'}</tbody></table></div>`;
+  }
+
+  function renderMapping(headers, sheet = null, missingFields = []) {
     const guess = window.CambiosIO.guessMapping(headers);
-    const fields = [['fecha', 'Marca temporal / Fecha'], ['historia', 'Número de historia clínico'], ['tar_antiguo', 'TAR antiguo'], ['tar_nuevo', 'TAR nuevo'], ['motivo', 'Motivo']];
+    const currentMapping = collectImportMapping();
+    const fields = [['fecha', 'Fecha'], ['historia', 'Número de historia clínica'], ['tar_antiguo', 'TAR antiguo'], ['tar_nuevo', 'TAR nuevo'], ['motivo', 'Motivo']];
+    const sheetSelector = state.excelSheets.length > 1
+      ? `<label>Hoja de Excel<select id="excel-sheet-select">${state.excelSheets.map((item) => `<option value="${escapeHtml(item.name)}" ${sheet?.name === item.name ? 'selected' : ''}>${escapeHtml(item.name)} (${item.rows.length} filas)</option>`).join('')}</select></label>`
+      : '';
     $('mapping-area').classList.remove('hidden');
-    $('mapping-area').innerHTML = `<h3>Mapeo de columnas</h3><div class="form-grid compact">${fields.map(([field, label]) => `<label>${label}<select id="map-${field}"><option value="">Seleccione columna</option>${headers.map((h) => `<option value="${escapeHtml(h)}" ${guess[field] === h ? 'selected' : ''}>${escapeHtml(h)}</option>`).join('')}</select></label>`).join('')}</div>`;
+    $('mapping-area').innerHTML = `<h3>Mapeo de columnas</h3>${sheetSelector}<p class="small">Seleccione qué columna corresponde a cada campo obligatorio. ${missingFields.length ? '<strong>Faltan columnas obligatorias. Revise el mapeo manual.</strong>' : 'Columnas reconocidas automáticamente.'}</p><div class="form-grid compact">${fields.map(([field, label]) => `<label>Seleccione qué columna corresponde a ${label}<select id="map-${field}"><option value="">Seleccione columna</option>${headers.map((h) => `<option value="${escapeHtml(h)}" ${(currentMapping[field] || guess[field]) === h ? 'selected' : ''}>${escapeHtml(h)}</option>`).join('')}</select></label>`).join('')}</div>${renderColumnTable(headers)}`;
+    const sheetSelect = $('excel-sheet-select');
+    if (sheetSelect) sheetSelect.addEventListener('change', () => {
+      const selected = selectSheetWithData(state.excelSheets);
+      state.excelRows = selected?.rows || [];
+      state.excelHeaders = selected?.headers || [];
+      renderMapping(state.excelHeaders, selected, []);
+      $('import-preview').innerHTML = '';
+      $('import-valid-btn').disabled = true;
+    });
+  }
+
+  function collectImportMapping() {
+    return ['fecha', 'historia', 'tar_antiguo', 'tar_nuevo', 'motivo'].reduce((acc, field) => {
+      acc[field] = $(`map-${field}`)?.value || '';
+      return acc;
+    }, {});
+  }
+
+  function validationStats(valid, errors, duplicates) {
+    const requiredErrors = { fecha: 0, historia: 0, tar_antiguo: 0, tar_nuevo: 0, motivo: 0 };
+    errors.forEach((item) => {
+      Object.keys(requiredErrors).forEach((field) => { if (item.field === field) requiredErrors[field] += 1; });
+    });
+    return { requiredErrors, duplicates: duplicates.length, valid: valid.length, total: state.excelRows.length };
   }
 
   async function validateExcel() {
+    console.log('Validando Excel');
     try {
-      const mapping = ['fecha', 'historia', 'tar_antiguo', 'tar_nuevo', 'motivo'].reduce((acc, field) => { acc[field] = $(`map-${field}`).value; return acc; }, {});
+      state.importValidated = [];
+      state.importDuplicatesOmitted = 0;
+      $('import-valid-btn').disabled = true;
+      $('import-preview').innerHTML = '';
+
+      if (!window.CambiosIO.hasXlsxLibrary()) {
+        console.error('La librería XLSX no está disponible.');
+        renderImportMessage('No se ha podido cargar la librería de lectura Excel. Revise la configuración de la página.', 'error');
+        toast('La librería XLSX no está disponible.', 'error');
+        return;
+      }
+      if (!state.selectedExcelFile) throw new Error('Debe seleccionar un archivo Excel antes de validar.');
       if (!window.CambiosCrypto.getActivePseudonymizationKey()) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
-      if (Object.values(mapping).some((v) => !v)) throw new Error('Debe mapear todas las columnas esperadas.');
+
+      try {
+        const excel = await window.CambiosIO.readExcelWorkbook(state.selectedExcelFile);
+        state.excelWorkbook = excel.workbook;
+        state.excelSheets = excel.sheets;
+      } catch (error) {
+        console.error('No se ha podido leer el Excel.', error);
+        renderImportMessage('No se ha podido leer el Excel. Compruebe que el archivo no esté vacío ni protegido.', 'error');
+        toast('No se ha podido leer el Excel. Compruebe que el archivo no esté vacío ni protegido.', 'error');
+        return;
+      }
+
+      const sheet = selectSheetWithData(state.excelSheets);
+      state.excelRows = sheet?.rows || [];
+      state.excelHeaders = sheet?.headers || [];
+      console.log('Hoja leída', sheet?.name || '(sin hoja)');
+      console.log('Columnas detectadas', state.excelHeaders);
+      console.log('Registros detectados', state.excelRows.length);
+
+      if (!sheet || !state.excelRows.length || !state.excelHeaders.length) throw new Error('No se han detectado filas con datos en el Excel.');
+
+      renderMapping(state.excelHeaders, sheet);
+      const mapping = collectImportMapping();
+      const missingFields = Object.entries(mapping).filter(([, value]) => !value).map(([field]) => field);
+      if (missingFields.length) {
+        renderMapping(state.excelHeaders, sheet, missingFields);
+        $('import-summary').innerHTML = `<div class="alert warning">Faltan columnas obligatorias. Revise el mapeo manual.</div><p>Archivo leído correctamente.</p><p>Se han detectado ${state.excelRows.length} filas y ${state.excelHeaders.length} columnas.</p>${renderColumnTable(state.excelHeaders)}`;
+        return;
+      }
+
       const existing = duplicateSet();
       const valid = []; const errors = []; const duplicates = []; const warnings = [];
       for (const [index, row] of state.excelRows.entries()) {
         try {
-          const record = await recordFromClinical({ fecha: row[mapping.fecha], historia: row[mapping.historia], tar_antiguo: row[mapping.tar_antiguo], tar_nuevo: row[mapping.tar_nuevo], motivo: row[mapping.motivo] }, 'histórico importado');
-          if (!validInputRecord(record)) throw new Error('Campos obligatorios incompletos o fecha inválida.');
+          const raw = { fecha: row[mapping.fecha], historia: row[mapping.historia], tar_antiguo: row[mapping.tar_antiguo], tar_nuevo: row[mapping.tar_nuevo], motivo: row[mapping.motivo] };
+          const missing = Object.entries(raw).find(([, value]) => String(value ?? '').trim() === '');
+          if (missing) throw Object.assign(new Error(`Campo obligatorio ausente: ${missing[0]}.`), { field: missing[0] });
+          const record = await recordFromClinical(raw, 'histórico importado');
+          if (!validInputRecord(record)) throw Object.assign(new Error('Campos obligatorios incompletos o fecha inválida.'), { field: !record.fecha ? 'fecha' : null });
           const key = window.CambiosIO.duplicateKey(record);
           if (existing.has(key) || valid.some((r) => window.CambiosIO.duplicateKey(r) === key)) duplicates.push({ index: index + 2, record }); else { if (isPendingReview(record)) warnings.push({ index: index + 2, record }); valid.push(record); }
-        } catch (error) { errors.push({ index: index + 2, error: error.message }); }
+        } catch (error) { errors.push({ index: index + 2, error: error.message, field: error.field || null }); }
       }
       state.importValidated = valid;
+      state.importDuplicatesOmitted = duplicates.length;
       $('import-valid-btn').disabled = valid.length === 0;
-      $('import-summary').innerHTML = `<div class="metric-grid compact-metrics"><div class="metric"><span>Registros detectados</span><strong>${state.excelRows.length}</strong></div><div class="metric"><span>Validados</span><strong>${valid.length}</strong></div><div class="metric"><span>Pendientes de revisar</span><strong>${warnings.length}</strong></div><div class="metric"><span>Errores</span><strong>${errors.length}</strong></div><div class="metric"><span>Duplicados</span><strong>${duplicates.length}</strong></div></div><p class="small">Puede editar las normalizaciones sugeridas antes de importar. Los registros con TAR no reconocido o motivo no clasificado quedan marcados como pendientes.</p>`;
-      $('import-preview').innerHTML = `<h3>Previsualización editable</h3><table><thead><tr><th>Fila</th><th>Fecha</th><th>patient_id seudonimizado</th><th>TAR antiguo original</th><th>TAR antiguo normalizado</th><th>TAR nuevo original</th><th>TAR nuevo normalizado</th><th>Motivo original</th><th>Motivo normalizado sugerido</th><th>Motivo detalle</th><th>Estado de validación</th></tr></thead><tbody>${valid.map((r, i) => `<tr><td>${i + 2}</td><td>${r.fecha}</td><td>${r.patient_id}</td><td>${escapeHtml(r.tar_antiguo_original)}</td><td><input data-import-index="${i}" data-import-field="tar_antiguo_normalizado" value="${escapeHtml(normalizedOld(r))}"></td><td>${escapeHtml(r.tar_nuevo_original)}</td><td><input data-import-index="${i}" data-import-field="tar_nuevo_normalizado" value="${escapeHtml(normalizedNew(r))}"></td><td>${escapeHtml(r.motivo_original)}</td><td><select data-import-index="${i}" data-import-field="motivo_normalizado">${window.CambiosNormalize.MOTIVOS.map((m) => `<option ${r.motivo_normalizado === m ? 'selected' : ''}>${m}</option>`).join('')}</select></td><td><input data-import-index="${i}" data-import-field="motivo_detalle" value="${escapeHtml(r.motivo_detalle || '')}"></td><td>${isPendingReview(r) ? '<span class="badge warning">Pendiente revisión</span>' : '<span class="badge ok">OK</span>'}</td></tr>`).join('')}${errors.slice(0, 20).map((e) => `<tr><td>${e.index}</td><td colspan="10">Error: ${escapeHtml(e.error)}</td></tr>`).join('')}${duplicates.slice(0, 20).map((d) => `<tr><td>${d.index}</td><td>${d.record.fecha}</td><td>${d.record.patient_id}</td><td colspan="7">Duplicado posible: ${escapeHtml(normalizedTransition(d.record))}</td><td><span class="badge warning">Duplicado</span></td></tr>`).join('')}</tbody></table>`;
+      const stats = validationStats(valid, errors, duplicates);
+      const tarPending = valid.filter((record) => !record.tar_antiguo_reconocido || !record.tar_nuevo_reconocido).length;
+      const recognizedMsg = 'Columnas reconocidas automáticamente.';
+      $('import-summary').innerHTML = `<div class="alert ${valid.length ? 'info' : 'warning'}">Archivo leído correctamente. ${valid.length ? `Hay ${valid.length} registros válidos para importar.` : 'No hay registros válidos para importar.'}</div><p>Se han detectado ${state.excelRows.length} filas y ${state.excelHeaders.length} columnas.</p><p>${recognizedMsg}</p><div class="metric-grid compact-metrics"><div class="metric"><span>Registros totales</span><strong>${stats.total}</strong></div><div class="metric"><span>Registros válidos</span><strong>${stats.valid}</strong></div><div class="metric"><span>Fecha ausente/inválida</span><strong>${stats.requiredErrors.fecha}</strong></div><div class="metric"><span>Nº historia ausente</span><strong>${stats.requiredErrors.historia}</strong></div><div class="metric"><span>TAR antiguo ausente</span><strong>${stats.requiredErrors.tar_antiguo}</strong></div><div class="metric"><span>TAR nuevo ausente</span><strong>${stats.requiredErrors.tar_nuevo}</strong></div><div class="metric"><span>Motivo ausente</span><strong>${stats.requiredErrors.motivo}</strong></div><div class="metric"><span>Posibles duplicados</span><strong>${stats.duplicates}</strong></div><div class="metric"><span>TAR pendiente revisión</span><strong>${tarPending}</strong></div></div><p class="small">Puede editar las normalizaciones sugeridas antes de importar. Los registros con TAR no reconocido quedan con estado_normalizacion_tar = “pendiente_revision”.</p>`;
+      $('import-preview').innerHTML = `<h3>Previsualización editable</h3><table><thead><tr><th>Fila</th><th>Fecha</th><th>patient_id seudonimizado</th><th>TAR antiguo original</th><th>TAR antiguo normalizado</th><th>TAR nuevo original</th><th>TAR nuevo normalizado</th><th>Motivo original</th><th>Motivo normalizado sugerido</th><th>Motivo detalle</th><th>Estado de validación</th></tr></thead><tbody>${valid.map((r, i) => `<tr><td>${i + 2}</td><td>${r.fecha}</td><td>${escapeHtml(r.patient_id)}</td><td>${escapeHtml(r.tar_antiguo_original)}</td><td><input data-import-index="${i}" data-import-field="tar_antiguo_normalizado" value="${escapeHtml(normalizedOld(r))}"></td><td>${escapeHtml(r.tar_nuevo_original)}</td><td><input data-import-index="${i}" data-import-field="tar_nuevo_normalizado" value="${escapeHtml(normalizedNew(r))}"></td><td>${escapeHtml(r.motivo_original)}</td><td><select data-import-index="${i}" data-import-field="motivo_normalizado">${window.CambiosNormalize.MOTIVOS.map((m) => `<option ${r.motivo_normalizado === m ? 'selected' : ''}>${m}</option>`).join('')}</select></td><td><input data-import-index="${i}" data-import-field="motivo_detalle" value="${escapeHtml(r.motivo_detalle || '')}"></td><td>${isPendingReview(r) ? '<span class="badge warning">Pendiente revisión</span>' : '<span class="badge ok">OK</span>'}</td></tr>`).join('')}${errors.slice(0, 20).map((e) => `<tr><td>${e.index}</td><td colspan="10">Error: ${escapeHtml(e.error)}</td></tr>`).join('')}${duplicates.slice(0, 20).map((d) => `<tr><td>${d.index}</td><td>${d.record.fecha}</td><td>${escapeHtml(d.record.patient_id)}</td><td colspan="7">Duplicado posible: ${escapeHtml(normalizedTransition(d.record))}</td><td><span class="badge warning">Duplicado</span></td></tr>`).join('')}</tbody></table>`;
       toast('Validación completada.');
-    } catch (error) { toast(error.message, 'error'); }
+    } catch (error) {
+      console.error('Error validando Excel', error);
+      renderImportMessage(error.message, 'error');
+      toast(error.message, 'error');
+    }
   }
 
   async function importValidated() {
     document.querySelectorAll('[data-import-index]').forEach((el) => {
       const record = state.importValidated[Number(el.dataset.importIndex)];
       if (!record) return;
+      const previousValue = record[el.dataset.importField];
+      const changed = String(el.value || '').trim() !== String(previousValue || '').trim();
       record[el.dataset.importField] = el.value;
       record.tar_antiguo = record.tar_antiguo_normalizado;
       record.tar_nuevo = record.tar_nuevo_normalizado;
       record.transicion_tar_normalizada = `${record.tar_antiguo_normalizado} → ${record.tar_nuevo_normalizado}`;
       record.transicion_tar = record.transicion_tar_normalizada;
-      if (el.dataset.importField === 'tar_antiguo_normalizado') record.tar_antiguo_reconocido = true;
-      if (el.dataset.importField === 'tar_nuevo_normalizado') record.tar_nuevo_reconocido = true;
+      if (el.dataset.importField === 'tar_antiguo_normalizado' && changed && el.value.trim()) record.tar_antiguo_reconocido = true;
+      if (el.dataset.importField === 'tar_nuevo_normalizado' && changed && el.value.trim()) record.tar_nuevo_reconocido = true;
       if (el.dataset.importField === 'motivo_normalizado') record.motivo_clasificado = true;
     });
-    const pending = state.importValidated.filter(isPendingReview).length;
+    state.importValidated.forEach((record) => {
+      record.estado_normalizacion_tar = (!record.tar_antiguo_reconocido || !record.tar_nuevo_reconocido) ? 'pendiente_revision' : 'normalizado';
+    });
+    const pending = state.importValidated.filter((record) => record.estado_normalizacion_tar === 'pendiente_revision').length;
     if (pending && !confirm(`${pending} registros siguen pendientes de revisar. ¿Importarlos igualmente?`)) return;
-    await window.CambiosStorage.bulkSave(state.importValidated);
-    toast(`Importación finalizada: ${state.importValidated.length} registros importados.`);
+    const existing = duplicateSet();
+    const toSave = [];
+    let duplicates = 0;
+    state.importValidated.forEach((record) => {
+      const key = window.CambiosIO.duplicateKey(record);
+      if (existing.has(key) || toSave.some((item) => window.CambiosIO.duplicateKey(item) === key)) duplicates += 1;
+      else toSave.push(record);
+    });
+    await window.CambiosStorage.bulkSave(toSave);
+    const summary = `${toSave.length} registros importados. ${duplicates} duplicados omitidos. ${pending} registros con normalización TAR pendiente de revisión.`;
+    $('import-summary').innerHTML = `<div class="alert info">${escapeHtml(summary)}</div>`;
+    toast(summary);
     $('import-valid-btn').disabled = true; state.importValidated = []; await refresh();
   }
 
@@ -333,7 +442,19 @@
     });
     $('clear-key-btn').addEventListener('click', () => { window.CambiosCrypto.clearPseudonymizationKey(); updateSecurityWarnings(); toast('Clave olvidada en este navegador.'); });
     $('delete-all-btn').addEventListener('click', async () => { if (confirm('Primera confirmación: ¿borrar todos los datos locales?') && confirm('Segunda confirmación: esta acción no se puede deshacer.')) { await window.CambiosStorage.clearAll(); window.CambiosNormalize.clearLocalNormalizationConfig(); window.CambiosCrypto.clearPseudonymizationKey(); updateSecurityWarnings(); await refresh(); toast('Todos los datos locales han sido borrados.'); } });
-    $('excel-file').addEventListener('change', async (e) => { const file = e.target.files[0]; if (!file) return; state.excelRows = await window.CambiosIO.readExcel(file); renderMapping(Object.keys(state.excelRows[0] || {})); $('validate-excel-btn').disabled = false; $('import-summary').textContent = `${state.excelRows.length} registros detectados.`; });
+    $('excel-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      state.selectedExcelFile = file || null;
+      state.excelWorkbook = null; state.excelSheets = []; state.excelRows = []; state.excelHeaders = []; state.importValidated = [];
+      $('import-valid-btn').disabled = true;
+      $('import-preview').innerHTML = '';
+      $('mapping-area').classList.add('hidden');
+      $('mapping-area').innerHTML = '';
+      if (!file) { $('validate-excel-btn').disabled = true; renderImportMessage('Seleccione un archivo Excel para comenzar.', 'info'); return; }
+      console.log('Archivo seleccionado', file.name);
+      $('validate-excel-btn').disabled = false;
+      $('import-summary').innerHTML = `<div class="alert info">Archivo seleccionado: <strong>${escapeHtml(file.name)}</strong>. Pulse “Validar Excel”.</div>`;
+    });
     $('validate-excel-btn').addEventListener('click', validateExcel); $('import-valid-btn').addEventListener('click', importValidated);
     ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient'].forEach((id) => $(id).addEventListener('input', applyFilters));
     $('clear-filters-btn').addEventListener('click', () => { document.querySelectorAll('.filters input,.filters select').forEach((el) => { el.value = ''; }); applyFilters(); });
