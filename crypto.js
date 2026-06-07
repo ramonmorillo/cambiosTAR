@@ -1,16 +1,8 @@
 (function () {
-  const SESSION_PSEUDONYMIZATION_KEY = 'cambiosTAR_session_pseudonymization_key';
-  const SAVED_PSEUDONYMIZATION_KEY = 'cambiosTAR_pseudonymization_key';
-  const SESSION_PSEUDONYMIZATION_VERIFIER = 'cambiosTAR_session_pseudonymization_key_verifier';
-  const SAVED_PSEUDONYMIZATION_VERIFIER = 'cambiosTAR_pseudonymization_key_verifier';
-  const LEGACY_SESSION_KEY = 'cambiosTAR_session_key';
-  const LEGACY_SAVED_KEY = 'cambiosTAR_pseudo_key';
-
-  let activePseudonymizationKey = '';
-  let activePseudonymizationKeyVerifier = '';
+  const PSEUDONYMIZATION_KEY_STORAGE = 'cambiosTAR_pseudonymization_key';
 
   function safeStorageGet(storage, key) {
-    try { return storage.getItem(key) || ''; } catch (_) { return ''; }
+    try { return storage.getItem(key); } catch (_) { return null; }
   }
 
   function safeStorageSet(storage, key, value) {
@@ -32,102 +24,60 @@
     return `fallback-${Math.abs(hash).toString(16).padStart(8, '0')}`;
   }
 
-  function getPersistedPseudonymizationKey() {
-    return safeStorageGet(localStorage, SAVED_PSEUDONYMIZATION_KEY) || safeStorageGet(localStorage, LEGACY_SAVED_KEY);
-  }
-
-  function getSessionPseudonymizationKey() {
-    return safeStorageGet(sessionStorage, SESSION_PSEUDONYMIZATION_KEY) || safeStorageGet(sessionStorage, LEGACY_SESSION_KEY);
-  }
-
-  function getActivePseudonymizationKey() {
-    const storedSessionKey = getSessionPseudonymizationKey();
-    const storedPersistedKey = getPersistedPseudonymizationKey();
-    activePseudonymizationKey = String(activePseudonymizationKey || storedSessionKey || storedPersistedKey || '').trim();
-    if (activePseudonymizationKey && !storedSessionKey) safeStorageSet(sessionStorage, SESSION_PSEUDONYMIZATION_KEY, activePseudonymizationKey);
-    return activePseudonymizationKey;
-  }
-
-  function hasPersistedPseudonymizationKey() {
-    return Boolean(getPersistedPseudonymizationKey());
-  }
-
-  function hasPseudonymizationKey() {
-    return Boolean(getActivePseudonymizationKey());
-  }
-
-  function notifyPseudonymizationKeyChange() {
+  function callSecurityStateUpdate() {
+    if (typeof window.updateSecurityState === 'function') window.updateSecurityState();
     window.dispatchEvent(new CustomEvent('pseudonymization-key-changed', {
-      detail: {
-        claveConfigurada: hasPseudonymizationKey(),
-        persisted: hasPersistedPseudonymizationKey()
-      }
+      detail: { configured: hasPseudonymizationKey(), persisted: hasPseudonymizationKey() }
     }));
   }
 
-  function calculateAndStorePseudonymizationKeyVerifier(key, persist) {
-    sha256(`cambiosTAR-key-verifier::${key}`).then((verifier) => {
-      activePseudonymizationKeyVerifier = verifier;
-      safeStorageSet(sessionStorage, SESSION_PSEUDONYMIZATION_VERIFIER, verifier);
-      if (persist) safeStorageSet(localStorage, SAVED_PSEUDONYMIZATION_VERIFIER, verifier);
-    });
-  }
-
-  function setPseudonymizationKey(value, persist) {
-    const key = String(value || '').trim();
-    if (!key) return false;
-
-    activePseudonymizationKey = key;
-    safeStorageSet(sessionStorage, SESSION_PSEUDONYMIZATION_KEY, key);
-    safeStorageRemove(sessionStorage, LEGACY_SESSION_KEY);
-    if (persist) {
-      safeStorageSet(localStorage, SAVED_PSEUDONYMIZATION_KEY, key);
-      safeStorageRemove(localStorage, LEGACY_SAVED_KEY);
-    } else {
-      safeStorageRemove(localStorage, SAVED_PSEUDONYMIZATION_KEY);
-      safeStorageRemove(localStorage, SAVED_PSEUDONYMIZATION_VERIFIER);
-      safeStorageRemove(localStorage, LEGACY_SAVED_KEY);
-    }
-    calculateAndStorePseudonymizationKeyVerifier(key, persist);
-    notifyPseudonymizationKeyChange();
+  function setPseudonymizationKey(key) {
+    const cleanKey = String(key || '').trim();
+    if (!cleanKey) throw new Error('La clave local no puede estar vacía.');
+    if (!safeStorageSet(localStorage, PSEUDONYMIZATION_KEY_STORAGE, cleanKey)) throw new Error('No se ha podido guardar la clave local en este navegador.');
+    callSecurityStateUpdate();
     return true;
   }
 
+  function getPseudonymizationKey() {
+    return safeStorageGet(localStorage, PSEUDONYMIZATION_KEY_STORAGE);
+  }
+
+  function hasPseudonymizationKey() {
+    const key = getPseudonymizationKey();
+    return !!key && key.trim().length > 0;
+  }
+
   function clearPseudonymizationKey() {
-    activePseudonymizationKey = '';
-    activePseudonymizationKeyVerifier = '';
-    [SESSION_PSEUDONYMIZATION_KEY, SESSION_PSEUDONYMIZATION_VERIFIER, LEGACY_SESSION_KEY].forEach((key) => safeStorageRemove(sessionStorage, key));
-    [SAVED_PSEUDONYMIZATION_KEY, SAVED_PSEUDONYMIZATION_VERIFIER, LEGACY_SAVED_KEY].forEach((key) => safeStorageRemove(localStorage, key));
-    notifyPseudonymizationKeyChange();
+    safeStorageRemove(localStorage, PSEUDONYMIZATION_KEY_STORAGE);
+    callSecurityStateUpdate();
   }
 
   async function pseudonymize(clinicalId, explicitPseudonymizationKey) {
     const cleanId = String(clinicalId || '').trim();
-    const pseudonymizationKey = String(explicitPseudonymizationKey || getActivePseudonymizationKey() || '').trim();
+    const key = String(explicitPseudonymizationKey || getPseudonymizationKey() || '').trim();
     if (!cleanId) throw new Error('Número de historia clínica obligatorio.');
-    if (!pseudonymizationKey) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
-    const hash = await sha256(`${pseudonymizationKey}::${cleanId}`);
+    if (!key) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
+    const hash = await sha256(`${key}::${cleanId}`);
     return `PT-${hash.slice(0, 16).toUpperCase()}`;
   }
 
-  function initializePseudonymizationKey() {
-    const key = getActivePseudonymizationKey();
-    activePseudonymizationKeyVerifier = safeStorageGet(sessionStorage, SESSION_PSEUDONYMIZATION_VERIFIER) || safeStorageGet(localStorage, SAVED_PSEUDONYMIZATION_VERIFIER);
-    if (key && !activePseudonymizationKeyVerifier) calculateAndStorePseudonymizationKeyVerifier(key, hasPersistedPseudonymizationKey());
-  }
-
-  initializePseudonymizationKey();
+  window.PSEUDONYMIZATION_KEY_STORAGE = PSEUDONYMIZATION_KEY_STORAGE;
+  window.setPseudonymizationKey = setPseudonymizationKey;
+  window.getPseudonymizationKey = getPseudonymizationKey;
+  window.hasPseudonymizationKey = hasPseudonymizationKey;
+  window.clearPseudonymizationKey = clearPseudonymizationKey;
 
   window.CambiosCrypto = {
+    PSEUDONYMIZATION_KEY_STORAGE,
     setPseudonymizationKey,
-    getActivePseudonymizationKey,
+    getPseudonymizationKey,
     hasPseudonymizationKey,
     clearPseudonymizationKey,
-    hasPersistedPseudonymizationKey,
     pseudonymize,
     sha256,
-    getPseudonymizationKeyVerifier: () => activePseudonymizationKeyVerifier,
-    getKey: getActivePseudonymizationKey,
+    getPseudonymizationKeyVerifier: () => '',
+    getKey: getPseudonymizationKey,
     setKey: setPseudonymizationKey,
     clearKey: clearPseudonymizationKey,
     hasKey: hasPseudonymizationKey

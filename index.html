@@ -82,14 +82,15 @@
           <p>La clave se combina con el número de historia clínica para generar un <code>patient_id</code> SHA-256 estable antes de guardar el registro. La clave no aparece en exportaciones.</p>
           <div class="form-grid compact">
             <label>Clave local <input id="security-key" type="password" autocomplete="new-password" placeholder="Introduzca una clave local" /></label>
-            <label class="checkbox"><input id="save-key" type="checkbox" /> Guardar la clave solo en este navegador</label>
+            <p class="small muted">La clave se guardará solo en el localStorage de este navegador con el nombre <code>cambiosTAR_pseudonymization_key</code>.</p>
           </div>
           <div class="button-row">
             <button class="btn primary" id="save-key-btn">Configurar clave</button>
             <button class="btn secondary" id="check-key-btn">Comprobar clave</button>
             <button class="btn ghost" id="clear-key-btn">Olvidar clave</button>
           </div>
-          <div id="key-status" class="alert warning">Si se pierde o cambia la clave, el mismo número de historia puede generar identificadores diferentes. Sin clave, use solo datos ficticios o confirme la advertencia al guardar/importar.</div>
+          <div id="key-status" class="alert warning">No hay clave local configurada.</div>
+          <div id="security-status" class="small muted" aria-live="polite">No hay clave local configurada.</div>
         </article>
       </div>
       <article class="card danger-card">
@@ -102,7 +103,8 @@
     <section id="registro" class="view">
       <div class="section-title"><p class="eyebrow">Registro manual diario</p><h2>Registrar nuevo cambio TAR</h2></div>
       <form id="record-form" class="card form-card">
-        <div id="record-key-warning" class="full alert warning">No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.</div>
+        <div id="record-key-warning" class="full alert warning" data-security-warning>No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.</div>
+        <div id="record-key-ok" class="full alert info hidden" data-security-ok>Clave local configurada. Puede registrar cambios.</div>
         <div class="form-grid">
           <label>Fecha del cambio <input type="date" id="change-date" required /></label>
           <label>Número de historia clínica <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
@@ -165,7 +167,7 @@
           <label>Motivo <select id="reason-normalized" required><option value="">Seleccione motivo</option><option>Fracaso viral</option><option>Efectos secundarios</option><option>Optimización</option><option>Interacciones</option><option>Otros</option></select></label>
           <label id="reason-detail-wrap" class="hidden">Especificar motivo <textarea id="reason-detail" rows="3" placeholder="Obligatorio si selecciona Otros. No introduzca identificadores directos."></textarea></label>
         </div>
-        <div class="button-row"><button class="btn primary" type="submit">Guardar cambio</button><button class="btn ghost" type="reset">Limpiar formulario</button></div>
+        <div class="button-row"><button class="btn primary" type="submit" data-requires-security-key>Guardar cambio</button><button class="btn ghost" type="reset">Limpiar formulario</button></div>
         <div id="record-message" class="message" aria-live="polite"></div>
       </form>
     </section>
@@ -174,7 +176,7 @@
       <div class="section-title"><p class="eyebrow">Carga histórica</p><h2>Importar histórico Excel</h2></div>
       <article class="card">
         <p>Seleccione un archivo <strong>.xlsx</strong>. Se lee únicamente en el navegador; no se sube a ningún servidor. Antes de importar se validan columnas, normalización TAR/motivos, errores y posibles duplicados.</p>
-        <div id="import-key-warning" class="alert warning">No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.</div>
+        <div id="import-key-warning" class="alert warning" data-security-warning>No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.</div>
         <input id="excel-file" type="file" accept=".xlsx,.xls" />
         <div id="mapping-area" class="mapping-area hidden"></div>
         <div id="import-summary" class="summary-box"></div>
