@@ -72,6 +72,14 @@ Avisos importantes:
 - No use la herramienta como historia clínica ni como sustituto de sistemas corporativos.
 - Si se borra la caché, se cambia de navegador o se usa otro equipo, los datos pueden perderse si no se han exportado backups.
 
+### Pruebas manuales de clave local
+
+- Configurar una clave sin marcar **Guardar la clave solo en este navegador** y registrar un cambio sin recargar la página.
+- Configurar una clave marcando **Guardar la clave solo en este navegador**, recargar la página y registrar un cambio.
+- Pulsar **Olvidar clave** y comprobar que vuelve a mostrarse el aviso de falta de clave y se bloquea el registro real.
+- Intentar registrar un cambio sin clave y comprobar que la aplicación lo bloquea antes de guardar.
+- Revisar los registros/exportaciones y comprobar que el número de historia clínica no se guarda en claro.
+
 ## Módulos de la aplicación
 
 ### Inicio
