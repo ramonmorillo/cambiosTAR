@@ -18,6 +18,37 @@
   function normalizedTransition(r) { return r.transicion_tar_normalizada || r.transicion_tar || `${normalizedOld(r)} → ${normalizedNew(r)}`; }
   function isPendingReview(r) { return !r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || !r.motivo_normalizado; }
 
+  const VISIT_COUNTER_KEY = 'cambiosTAR_visit_counter';
+  const LAST_VISIT_KEY = 'cambiosTAR_last_visit_at';
+
+  function updateFooterTelemetry() {
+    const counterEl = $('visit-counter');
+    const lastVisitEl = $('last-visit-at');
+    if (!counterEl && !lastVisitEl) return;
+
+    try {
+      const previousCount = Number.parseInt(localStorage.getItem(VISIT_COUNTER_KEY) || '0', 10);
+      const previousVisit = localStorage.getItem(LAST_VISIT_KEY) || '';
+      const safeCount = Number.isFinite(previousCount) && previousCount > 0 ? previousCount : 0;
+      const currentCount = safeCount + 1;
+      const now = new Date();
+
+      localStorage.setItem(VISIT_COUNTER_KEY, String(currentCount));
+      localStorage.setItem(LAST_VISIT_KEY, now.toISOString());
+
+      if (counterEl) counterEl.textContent = new Intl.NumberFormat('es-ES').format(currentCount);
+      if (lastVisitEl) {
+        lastVisitEl.textContent = previousVisit
+          ? new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(previousVisit))
+          : 'Primera visita registrada';
+      }
+    } catch (error) {
+      if (counterEl) counterEl.textContent = 'No disponible';
+      if (lastVisitEl) lastVisitEl.textContent = 'localStorage bloqueado';
+      console.warn('No se pudo actualizar el contador local de visitas.', error);
+    }
+  }
+
   function hasPseudonymizationKey() {
     return typeof window.hasPseudonymizationKey === 'function'
       ? window.hasPseudonymizationKey()
@@ -607,6 +638,7 @@
     if (typeof initDates === 'function') initDates();
     if (typeof toggleReasonDetail === 'function') toggleReasonDetail();
     if (typeof updateSecurityState === 'function') updateSecurityState();
+    if (typeof updateFooterTelemetry === 'function') updateFooterTelemetry();
     if (typeof refresh === 'function') await refresh();
     if (typeof renderCurrentView === 'function') renderCurrentView();
     else showSection(location.hash?.slice(1) || 'inicio');
