@@ -926,7 +926,21 @@
     const box = $('patient-suggestions');
     if (!box) return;
     const suggestions = (await patientSuggestions(term)).slice(0, 12);
-    box.innerHTML = suggestions.map((item) => `<button type="button" class="patient-suggestion" data-patient-id="${escapeHtml(item.patient_id)}">${escapeHtml(item.label)}</button>`).join('') || (term ? '<p class="small muted">Sin coincidencias.</p>' : '');
+    if (suggestions.length > 0) {
+      box.innerHTML = suggestions.map((item) => `<button type="button" class="patient-suggestion" data-patient-id="${escapeHtml(item.patient_id)}">${escapeHtml(item.label)}</button>`).join('');
+      return;
+    }
+    if (!term) { box.innerHTML = ''; return; }
+    // No match found. If input is a local code (not a PT-ID), show what PT-ID the current key
+    // would generate — this lets the user verify whether the key matches what was used at registration.
+    if (!isPseudonymizedPatientId(term) && hasPseudonymizationKey()) {
+      try {
+        const derived = await window.CambiosCrypto.pseudonymize(normalizeOriginalPatientCode(term));
+        box.innerHTML = `<p class="small muted">Sin coincidencias. Con la clave actual, este código generaría: <strong>${escapeHtml(derived)}</strong></p>`;
+        return;
+      } catch (_) { /* no key */ }
+    }
+    box.innerHTML = '<p class="small muted">Sin coincidencias.</p>';
   }
 
   async function renderPatient() {
