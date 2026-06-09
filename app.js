@@ -194,8 +194,8 @@
     });
   }
 
-  function searchPatients(term) {
-    const ids = resolvePatientSearchTermToIds(term);
+  async function searchPatients(term) {
+    const ids = await resolvePatientSearchTermToIds(term);
     const byId = new Map(state.patientIdMap.map((item) => [normalizePatientId(item.patient_id), item]));
     return ids.map((id) => byId.get(normalizePatientId(id)) || { original_patient_code: '', patient_id: normalizePatientId(id) });
   }
@@ -204,7 +204,7 @@
     return normalizePatientLookupInput(a) === normalizePatientLookupInput(b);
   }
 
-  function resolvePatientIdFromInput(input) {
+  async function resolvePatientIdFromInput(input) {
     const q = normalizePatientLookupInput(input);
     if (!q) return null;
 
@@ -232,20 +232,34 @@
       .filter(Boolean);
 
     const recordIds = uniquePatientIds(exactLocalFromRecords);
-    return recordIds.length === 1 ? recordIds[0] : null;
+    if (recordIds.length === 1) return recordIds[0];
+    if (recordIds.length > 1) return null;
+
+    // Fallback: derive patient_id via hash (same path as registration) and check records.
+    // Covers cases where patientIdMap is empty and records lack original_patient_code.
+    if (hasPseudonymizationKey()) {
+      try {
+        const qHash = normalizeOriginalPatientCode(input); // trim only — matches pseudonymize() input normalization
+        const derived = normalizePatientId(await window.CambiosCrypto.pseudonymize(qHash));
+        const exists = allRecords.some((r) => getRecordPatientId(r) === derived) || patientMap.some((i) => getMapPatientId(i) === derived);
+        if (exists) return derived;
+      } catch (_) { /* no key configured or hash unavailable */ }
+    }
+
+    return null;
   }
 
-  function resolvePatientSearchTermToIds(searchTerm) {
-    const patientId = resolvePatientIdFromInput(searchTerm);
+  async function resolvePatientSearchTermToIds(searchTerm) {
+    const patientId = await resolvePatientIdFromInput(searchTerm);
     return patientId ? [patientId] : [];
   }
 
-  function resolveSearchTermToPatientIds(term) {
+  async function resolveSearchTermToPatientIds(term) {
     return resolvePatientSearchTermToIds(term);
   }
 
-  function resolvePatientSearchTerm(term) {
-    const ids = resolvePatientSearchTermToIds(term);
+  async function resolvePatientSearchTerm(term) {
+    const ids = await resolvePatientSearchTermToIds(term);
     return ids.length === 1 ? ids[0] : null;
   }
 
@@ -254,15 +268,15 @@
     return mapping ? `Código local: ${mapping.original_patient_code} · ID seudonimizado: ${mapping.patient_id}` : `ID seudonimizado: ${patientId}`;
   }
 
-  function patientSuggestions(term) {
-    const ids = resolvePatientSearchTermToIds(term);
+  async function patientSuggestions(term) {
+    const ids = await resolvePatientSearchTermToIds(term);
     return ids.map((patientId) => ({ patient_id: patientId, label: patientLabelForId(patientId) }));
   }
 
-  function debugPatientResolution(inputCode) {
+  async function debugPatientResolution(inputCode) {
     const normalized = normalizeOriginalPatientCode(inputCode);
     const mapping = findMappingByOriginalCode(normalized);
-    const resolvedIds = resolvePatientSearchTermToIds(normalized);
+    const resolvedIds = await resolvePatientSearchTermToIds(normalized);
     const resolvedPatientId = resolvedIds.length === 1 ? resolvedIds[0] : null;
     const matchingRecords = state.records.filter((r) => resolvedIds.includes(normalizePatientId(r.patient_id)));
     const result = {
@@ -355,8 +369,8 @@
     return patientMap;
   }
 
-  function debugCambiosTARPatient(searchTerm) {
-    const ids = resolvePatientSearchTermToIds(searchTerm);
+  async function debugCambiosTARPatient(searchTerm) {
+    const ids = await resolvePatientSearchTermToIds(searchTerm);
     const allRecords = getAllStoredRecordsSafely();
 
     const records = allRecords.filter((record) => ids.includes(getRecordPatientId(record)));
@@ -696,12 +710,12 @@
     fillSelect('filter-month', Array.from({ length: 12 }, (_, i) => i + 1));
     fillSelect('filter-reason', window.CambiosNormalize.MOTIVOS);
   }
-  function applyFilters() {
+  async function applyFilters() {
     updateFilterOptions();
     if (!$('records-table')) return;
     const from = $('filter-from')?.value || '', to = $('filter-to')?.value || '', year = $('filter-year')?.value || '', month = $('filter-month')?.value || '', reason = $('filter-reason')?.value || '';
     const old = ($('filter-old')?.value || '').toLowerCase(), newer = ($('filter-new')?.value || '').toLowerCase(), origin = $('filter-origin')?.value || '', patient = $('filter-patient')?.value || '', review = $('filter-review')?.value || '';
-    const patientIds = resolvePatientSearchTermToIds(patient);
+    const patientIds = await resolvePatientSearchTermToIds(patient);
     state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || patientIds.includes(normalizePatientId(r.patient_id))) && (!review || (r.estado_revision || (isPendingReview(r) ? 'pendiente' : 'ok')) === review));
     renderRecordsTable();
   }
@@ -889,10 +903,10 @@
     $('import-valid-btn').disabled = true; state.importValidated = []; await refresh();
   }
 
-  function renderPatientOptions() {
+  async function renderPatientOptions() {
     fillSelect('patient-select', uniqueOptions('patient_id'), 'Seleccione patient_id');
-    renderPatientSuggestions('');
-    renderPatient();
+    await renderPatientSuggestions('');
+    await renderPatient();
   }
 
   function selectedPatientId() {
@@ -908,21 +922,21 @@
     }
   }
 
-  function renderPatientSuggestions(term) {
+  async function renderPatientSuggestions(term) {
     const box = $('patient-suggestions');
     if (!box) return;
-    const suggestions = patientSuggestions(term).slice(0, 12);
+    const suggestions = (await patientSuggestions(term)).slice(0, 12);
     box.innerHTML = suggestions.map((item) => `<button type="button" class="patient-suggestion" data-patient-id="${escapeHtml(item.patient_id)}">${escapeHtml(item.label)}</button>`).join('') || (term ? '<p class="small muted">Sin coincidencias.</p>' : '');
   }
 
-  function renderPatient() {
+  async function renderPatient() {
     const id = selectedPatientId();
     const searchTerm = normalizeOriginalPatientCode($('patient-search')?.value || '');
     const rows = state.records.filter((r) => normalizePatientId(r.patient_id) === id).sort((a, b) => a.fecha.localeCompare(b.fecha));
     if (id) {
       $('patient-summary').innerHTML = `<div class="metric"><span>Total de cambios del paciente</span><strong>${rows.length}</strong></div><p><strong>Patient ID:</strong> ${escapeHtml(id)}</p><p><strong>Secuencia TAR:</strong> ${escapeHtml(rows.map((r) => normalizedNew(r)).join(' → ') || 'Sin datos')}</p>`;
     } else if (searchTerm) {
-      const patientIds = resolvePatientSearchTermToIds(searchTerm);
+      const patientIds = await resolvePatientSearchTermToIds(searchTerm);
       $('patient-summary').innerHTML = patientIds.length > 1
         ? '<p>Se encontraron varios pacientes compatibles. Seleccione una opción de la lista para cargar el seguimiento.</p>'
         : '<p>No se encontraron registros para ese código local o ID seudonimizado.</p>';
@@ -1029,8 +1043,8 @@
     on('export-filtered-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.filtered, 'cambiosTAR_filtrado.xlsx'));
     on('export-filtered-csv', 'click', () => window.CambiosIO.exportCSV(state.filtered, 'cambiosTAR_filtrado.csv'));
     on('patient-select', 'change', () => { setSelectedPatientId($('patient-select')?.value); renderPatient(); });
-    on('patient-search', 'input', (e) => { e.target.dataset.selectedPatientId = ''; if ($('patient-select')) $('patient-select').value = ''; renderPatientSuggestions(e.target.value); const ids = resolvePatientSearchTermToIds(e.target.value); if (ids.length === 1 && normalizeOriginalPatientCode(e.target.value).length >= 3) { if ($('patient-select')) $('patient-select').value = ids[0]; e.target.dataset.selectedPatientId = ids[0]; } renderPatient(); });
-    on('patient-suggestions', 'click', (e) => { const button = e.target.closest('[data-patient-id]'); if (!button) return; setSelectedPatientId(button.dataset.patientId); renderPatientSuggestions(''); renderPatient(); });
+    on('patient-search', 'input', async (e) => { e.target.dataset.selectedPatientId = ''; if ($('patient-select')) $('patient-select').value = ''; await renderPatientSuggestions(e.target.value); const ids = await resolvePatientSearchTermToIds(e.target.value); if (ids.length === 1 && normalizeOriginalPatientCode(e.target.value).length >= 3) { if ($('patient-select')) $('patient-select').value = ids[0]; e.target.dataset.selectedPatientId = ids[0]; } await renderPatient(); });
+    on('patient-suggestions', 'click', async (e) => { const button = e.target.closest('[data-patient-id]'); if (!button) return; setSelectedPatientId(button.dataset.patientId); await renderPatientSuggestions(''); await renderPatient(); });
     on('export-patient-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.records.filter((r) => normalizePatientId(r.patient_id) === selectedPatientId()), 'cambiosTAR_paciente.xlsx'));
     on('export-patient-csv', 'click', () => window.CambiosIO.exportCSV(state.records.filter((r) => normalizePatientId(r.patient_id) === selectedPatientId()), 'cambiosTAR_paciente.csv'));
     on('patient-report-btn', 'click', () => { const id = selectedPatientId(); if (!id) return toast('Seleccione un patient_id.', 'error'); $('report-output').innerHTML = `<h3>Informe individual seudonimizado</h3><p>Patient ID: ${escapeHtml(id)}</p>` + window.CambiosReports.renderReport(window.CambiosReports.generateReport(state.records.filter((r) => normalizePatientId(r.patient_id) === id), { label: 'Trayectoria completa', from: '', to: '' })); showSection('informes'); });
