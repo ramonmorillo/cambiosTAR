@@ -41,6 +41,10 @@
       alert('No se ha podido guardar la clave local en este navegador.');
       return false;
     }
+    // Also persist in IndexedDB so the key survives a localStorage-only clear.
+    if (window.CambiosStorage?.saveSetting) {
+      window.CambiosStorage.saveSetting(PSEUDONYMIZATION_KEY_STORAGE, cleanKey).catch(() => {});
+    }
     callSecurityStateUpdate();
 
     const msg = document.getElementById('security-message');
@@ -63,12 +67,29 @@
 
   function clearPseudonymizationKey() {
     safeStorageRemove(localStorage, PSEUDONYMIZATION_KEY_STORAGE);
+    if (window.CambiosStorage?.deleteSetting) {
+      window.CambiosStorage.deleteSetting(PSEUDONYMIZATION_KEY_STORAGE).catch(() => {});
+    }
     callSecurityStateUpdate();
 
     const msg = document.getElementById('security-message');
     if (msg) {
       msg.textContent = 'Clave local eliminada.';
     }
+  }
+
+  // Restores the key from IndexedDB into localStorage if localStorage is empty.
+  // Call once at app startup to recover from a localStorage-only clear.
+  async function restoreKeyFromIndexedDB() {
+    if (hasPseudonymizationKey()) return; // already in localStorage, nothing to do
+    if (!window.CambiosStorage?.loadSetting) return;
+    try {
+      const saved = await window.CambiosStorage.loadSetting(PSEUDONYMIZATION_KEY_STORAGE);
+      if (saved && String(saved).trim()) {
+        safeStorageSet(localStorage, PSEUDONYMIZATION_KEY_STORAGE, String(saved).trim());
+        callSecurityStateUpdate();
+      }
+    } catch (_) { /* IndexedDB unavailable */ }
   }
 
   async function pseudonymize(clinicalId, explicitPseudonymizationKey) {
@@ -92,6 +113,7 @@
     getPseudonymizationKey,
     hasPseudonymizationKey,
     clearPseudonymizationKey,
+    restoreKeyFromIndexedDB,
     pseudonymize,
     sha256,
     getPseudonymizationKeyVerifier: () => '',

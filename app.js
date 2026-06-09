@@ -1086,6 +1086,8 @@
     if (typeof bindEvents === 'function') bindEvents();
     if (typeof initDates === 'function') initDates();
     if (typeof toggleReasonDetail === 'function') toggleReasonDetail();
+    // Restore key from IndexedDB backup if localStorage was cleared.
+    if (window.CambiosCrypto?.restoreKeyFromIndexedDB) await window.CambiosCrypto.restoreKeyFromIndexedDB();
     if (typeof updateSecurityState === 'function') updateSecurityState();
     if (typeof updateFooterTelemetry === 'function') updateFooterTelemetry();
     if (typeof refresh === 'function') await refresh();

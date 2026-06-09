@@ -3,7 +3,8 @@
   // Fallback localStorage seguro: cambiosTAR_records; cambiosTAR_records_fallback solo se lee para compatibilidad histórica.
   const DB_NAME = 'cambiosTAR_db';
   const STORE = 'records';
-  const VERSION = 1;
+  const SETTINGS_STORE = 'settings';
+  const VERSION = 2;
   const LS_KEY = 'cambiosTAR_records';
   const LEGACY_LS_KEY = 'cambiosTAR_records_fallback';
   let dbPromise;
@@ -19,6 +20,9 @@
           const store = db.createObjectStore(STORE, { keyPath: 'id' });
           store.createIndex('patient_id', 'patient_id', { unique: false });
           store.createIndex('fecha', 'fecha', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
+          db.createObjectStore(SETTINGS_STORE, { keyPath: 'k' });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -47,6 +51,39 @@
       tx.oncomplete = () => resolve(result);
       tx.onerror = () => reject(tx.error);
       result = callback(store);
+    });
+  }
+
+  async function saveSetting(key, value) {
+    const db = await openDb();
+    if (!db) return;
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+      tx.objectStore(SETTINGS_STORE).put({ k: key, v: value });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function loadSetting(key) {
+    const db = await openDb();
+    if (!db) return null;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readonly');
+      const req = tx.objectStore(SETTINGS_STORE).get(key);
+      req.onsuccess = () => resolve(req.result?.v ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function deleteSetting(key) {
+    const db = await openDb();
+    if (!db) return;
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+      tx.objectStore(SETTINGS_STORE).delete(key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
     });
   }
 
@@ -100,5 +137,6 @@
     await withStore('readwrite', (store) => store.clear());
   }
 
-  window.CambiosStorage = { getAllRecords, saveRecord, bulkSave, deleteRecord, clearAll, keys: { DB_NAME, STORE, LS_KEY, LEGACY_LS_KEY } };
+  window.CambiosStorage = { getAllRecords, saveRecord, bulkSave, deleteRecord, clearAll, saveSetting, loadSetting, deleteSetting, keys: { DB_NAME, STORE, LS_KEY, LEGACY_LS_KEY } };
 }());
+
