@@ -1,4 +1,6 @@
 (function () {
+  // Fuente principal de registros TAR: IndexedDB cambiosTAR_db/records.
+  // Fallback localStorage seguro: cambiosTAR_records; cambiosTAR_records_fallback solo se lee para compatibilidad histórica.
   const DB_NAME = 'cambiosTAR_db';
   const STORE = 'records';
   const VERSION = 1;
@@ -98,5 +100,5 @@
     await withStore('readwrite', (store) => store.clear());
   }
 
-  window.CambiosStorage = { getAllRecords, saveRecord, bulkSave, deleteRecord, clearAll };
+  window.CambiosStorage = { getAllRecords, saveRecord, bulkSave, deleteRecord, clearAll, keys: { DB_NAME, STORE, LS_KEY, LEGACY_LS_KEY } };
 }());
