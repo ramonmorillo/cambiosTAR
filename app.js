@@ -28,8 +28,12 @@
     return String(value ?? '').trim().toUpperCase();
   }
 
+  function normalizePatientLookupInput(value) {
+    return String(value ?? '').trim().replace(/\s+/g, '');
+  }
+
   function isPseudonymizedPatientId(value) {
-    return /^PT-[A-Z0-9]+$/i.test(String(value ?? '').trim());
+    return /^PT-[A-Z0-9]+$/i.test(normalizePatientLookupInput(value));
   }
 
   function getRecordPatientId(record) {
@@ -40,11 +44,20 @@
     return normalizeOriginalPatientCode(
       record?.original_patient_code ??
       record?.originalPatientCode ??
+      record?.local_patient_code ??
       record?.localPatientCode ??
+      record?.patient_code ??
+      record?.patientCode ??
+      record?.codigo_original ??
+      record?.codigoOriginal ??
       record?.codigoPaciente ??
       record?.codigo_paciente ??
       record?.nhc ??
       record?.NHC ??
+      record?.history_number ??
+      record?.historyNumber ??
+      record?.historiaClinica ??
+      record?.historia_clinica ??
       record?.historia ??
       record?.numeroHistoria ??
       record?.codigo_local ??
@@ -60,11 +73,20 @@
     return normalizeOriginalPatientCode(
       item?.original_patient_code ??
       item?.originalPatientCode ??
+      item?.local_patient_code ??
       item?.localPatientCode ??
+      item?.patient_code ??
+      item?.patientCode ??
+      item?.codigo_original ??
+      item?.codigoOriginal ??
       item?.codigoPaciente ??
       item?.codigo_paciente ??
       item?.nhc ??
       item?.NHC ??
+      item?.history_number ??
+      item?.historyNumber ??
+      item?.historiaClinica ??
+      item?.historia_clinica ??
       item?.historia ??
       item?.numeroHistoria ??
       item?.codigo_local ??
@@ -178,65 +200,44 @@
     return ids.map((id) => byId.get(normalizePatientId(id)) || { original_patient_code: '', patient_id: normalizePatientId(id) });
   }
 
-  function resolvePatientSearchTermToIds(searchTerm) {
-    const q = String(searchTerm ?? '').trim();
-    if (!q) return [];
-    const qLower = q.toLowerCase();
+  function sameLookupValue(a, b) {
+    return normalizePatientLookupInput(a) === normalizePatientLookupInput(b);
+  }
+
+  function resolvePatientIdFromInput(input) {
+    const q = normalizePatientLookupInput(input);
+    if (!q) return null;
 
     const allRecords = getAllStoredRecordsSafely();
     const patientMap = getPatientIdMapSafely();
 
+    if (isPseudonymizedPatientId(q)) {
+      const patientId = normalizePatientId(q);
+      const exists = allRecords.some((record) => getRecordPatientId(record) === patientId) || patientMap.some((item) => getMapPatientId(item) === patientId);
+      return exists ? patientId : null;
+    }
+
     const exactLocalFromMap = patientMap
-      .filter((item) => getMapLocalCode(item).toLowerCase() === qLower)
+      .filter((item) => sameLookupValue(getMapLocalCode(item), q))
       .map(getMapPatientId)
       .filter(Boolean);
 
-    if (exactLocalFromMap.length > 0) return uniquePatientIds(exactLocalFromMap);
+    const mapIds = uniquePatientIds(exactLocalFromMap);
+    if (mapIds.length === 1) return mapIds[0];
+    if (mapIds.length > 1) return null;
 
     const exactLocalFromRecords = allRecords
-      .filter((record) => getRecordLocalCode(record).toLowerCase() === qLower)
+      .filter((record) => sameLookupValue(getRecordLocalCode(record), q))
       .map(getRecordPatientId)
       .filter(Boolean);
 
-    if (exactLocalFromRecords.length > 0) return uniquePatientIds(exactLocalFromRecords);
+    const recordIds = uniquePatientIds(exactLocalFromRecords);
+    return recordIds.length === 1 ? recordIds[0] : null;
+  }
 
-    const exactPseudoFromRecords = allRecords
-      .filter((record) => getRecordPatientId(record).toLowerCase() === qLower)
-      .map(getRecordPatientId)
-      .filter(Boolean);
-
-    const exactPseudoFromMap = patientMap
-      .filter((item) => getMapPatientId(item).toLowerCase() === qLower)
-      .map(getMapPatientId)
-      .filter(Boolean);
-
-    const exactPseudo = uniquePatientIds([...exactPseudoFromRecords, ...exactPseudoFromMap]);
-    if (exactPseudo.length > 0) return exactPseudo;
-
-    const partialLocalFromMap = patientMap
-      .filter((item) => getMapLocalCode(item).toLowerCase().includes(qLower))
-      .map(getMapPatientId)
-      .filter(Boolean);
-
-    const partialLocalFromRecords = allRecords
-      .filter((record) => getRecordLocalCode(record).toLowerCase().includes(qLower))
-      .map(getRecordPatientId)
-      .filter(Boolean);
-
-    const partialLocal = uniquePatientIds([...partialLocalFromMap, ...partialLocalFromRecords]);
-    if (partialLocal.length > 0) return partialLocal;
-
-    const partialPseudoFromRecords = allRecords
-      .filter((record) => getRecordPatientId(record).toLowerCase().includes(qLower))
-      .map(getRecordPatientId)
-      .filter(Boolean);
-
-    const partialPseudoFromMap = patientMap
-      .filter((item) => getMapPatientId(item).toLowerCase().includes(qLower))
-      .map(getMapPatientId)
-      .filter(Boolean);
-
-    return uniquePatientIds([...partialPseudoFromRecords, ...partialPseudoFromMap]);
+  function resolvePatientSearchTermToIds(searchTerm) {
+    const patientId = resolvePatientIdFromInput(searchTerm);
+    return patientId ? [patientId] : [];
   }
 
   function resolveSearchTermToPatientIds(term) {
@@ -1058,7 +1059,7 @@
     $('report-month').value = new Date().getMonth() + 1;
   }
 
-  window.CambiosPatients = { normalizeOriginalPatientCode, isPseudonymizedPatientId, loadPatientIdMap, savePatientIdMap, findMappingByOriginalCode, findMappingByPatientId, searchPatients, resolveSearchTermToPatientIds, resolvePatientSearchTermToIds, resolvePatientSearchTerm, rebuildPatientIdMapFromRecords, debugPatientResolution, debugCambiosTARPatient, auditPatientMappings };
+  window.CambiosPatients = { normalizeOriginalPatientCode, normalizePatientLookupInput, isPseudonymizedPatientId, loadPatientIdMap, savePatientIdMap, findMappingByOriginalCode, findMappingByPatientId, searchPatients, resolvePatientIdFromInput, resolveSearchTermToPatientIds, resolvePatientSearchTermToIds, resolvePatientSearchTerm, rebuildPatientIdMapFromRecords, debugPatientResolution, debugCambiosTARPatient, auditPatientMappings };
   window.debugPatientResolution = debugPatientResolution;
   window.debugCambiosTARPatient = debugCambiosTARPatient;
   window.auditPatientMappings = auditPatientMappings;
