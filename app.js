@@ -1,5 +1,5 @@
 (function () {
-  const state = { records: [], filtered: [], selectedExcelFile: null, excelWorkbook: null, excelSheets: [], excelHeaders: [], excelRows: [], importValidated: [], importDuplicatesOmitted: 0, lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
+  const state = { records: [], filtered: [], patientIdMap: [], selectedExcelFile: null, excelWorkbook: null, excelSheets: [], excelHeaders: [], excelRows: [], importValidated: [], importDuplicatesOmitted: 0, lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
@@ -17,6 +17,117 @@
   function normalizedNew(r) { return r.tar_nuevo_normalizado || r.tar_nuevo || ''; }
   function normalizedTransition(r) { return r.transicion_tar_normalizada || r.transicion_tar || `${normalizedOld(r)} → ${normalizedNew(r)}`; }
   function isPendingReview(r) { return !r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || !r.motivo_normalizado; }
+
+  const PATIENT_ID_MAP_KEY = 'cambiosTAR_patientIdMap';
+
+  function normalizeOriginalPatientCode(value) {
+    return String(value ?? '').trim();
+  }
+
+  function normalizePatientId(value) {
+    return String(value ?? '').trim().toUpperCase();
+  }
+
+  function isPseudonymizedPatientId(value) {
+    return /^PT-[A-Z0-9]+$/i.test(String(value ?? '').trim());
+  }
+
+  function normalizeMapItem(item) {
+    const original = normalizeOriginalPatientCode(item?.original_patient_code);
+    const patientId = normalizePatientId(item?.patient_id);
+    if (!original || !patientId) return null;
+    return { original_patient_code: original, patient_id: patientId, created_at: item?.created_at || new Date().toISOString() };
+  }
+
+  function loadPatientIdMap() {
+    try {
+      const raw = localStorage.getItem(PATIENT_ID_MAP_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(normalizeMapItem).filter(Boolean) : [];
+    } catch (error) {
+      console.error('Error loading patient ID map', error);
+      return [];
+    }
+  }
+
+  function savePatientIdMap(map = state.patientIdMap) {
+    try {
+      const normalized = map.map(normalizeMapItem).filter(Boolean);
+      const byOriginal = new Map();
+      const byPatientId = new Map();
+      normalized.forEach((item) => {
+        if (byOriginal.has(item.original_patient_code) && byOriginal.get(item.original_patient_code) !== item.patient_id) {
+          throw new Error('Conflicto de seudonimización: este código local ya está asociado a otro patient_id. Revise los datos antes de continuar.');
+        }
+        if (byPatientId.has(item.patient_id) && byPatientId.get(item.patient_id) !== item.original_patient_code) {
+          throw new Error('Conflicto de seudonimización: este patient_id ya está asociado a otro código local. Revise los datos antes de continuar.');
+        }
+        byOriginal.set(item.original_patient_code, item.patient_id);
+        byPatientId.set(item.patient_id, item.original_patient_code);
+      });
+      localStorage.setItem(PATIENT_ID_MAP_KEY, JSON.stringify(normalized));
+    } catch (error) {
+      console.error('Error saving patient ID map', error);
+      if (String(error.message || '').startsWith('Conflicto de seudonimización:')) throw error;
+      throw new Error('No se ha podido guardar el mapa local de seudonimización en este navegador.');
+    }
+  }
+
+  function findMappingByOriginalCode(originalCode) {
+    const normalized = normalizeOriginalPatientCode(originalCode);
+    return state.patientIdMap.find((item) => item.original_patient_code === normalized) || null;
+  }
+
+  function findMappingByPatientId(patientId) {
+    const normalized = normalizePatientId(patientId);
+    return state.patientIdMap.find((item) => normalizePatientId(item.patient_id) === normalized) || null;
+  }
+
+  async function getOrCreatePseudonymizedPatientId(originalCode) {
+    const normalized = normalizeOriginalPatientCode(originalCode);
+    if (!normalized) return null;
+    const existing = findMappingByOriginalCode(normalized);
+    if (existing) return existing.patient_id;
+    const newPatientId = normalizePatientId(await window.CambiosCrypto.pseudonymize(normalized, getPseudonymizationKey()));
+    const conflict = findMappingByPatientId(newPatientId);
+    if (conflict && conflict.original_patient_code !== normalized) {
+      throw new Error('Conflicto de seudonimización: este código local ya está asociado a otro patient_id. Revise los datos antes de continuar.');
+    }
+    state.patientIdMap.push({ original_patient_code: normalized, patient_id: newPatientId, created_at: new Date().toISOString() });
+    savePatientIdMap();
+    return newPatientId;
+  }
+
+  async function resolveClinicalPatientId(rawValue) {
+    const normalized = normalizeOriginalPatientCode(rawValue);
+    if (!normalized) return null;
+    if (isPseudonymizedPatientId(normalized)) return normalizePatientId(normalized);
+    return getOrCreatePseudonymizedPatientId(normalized);
+  }
+
+  function searchPatients(term) {
+    const q = String(term ?? '').trim().toLowerCase();
+    if (!q) return [];
+    return state.patientIdMap.filter((item) => String(item.original_patient_code ?? '').toLowerCase().includes(q) || String(item.patient_id ?? '').toLowerCase().includes(q));
+  }
+
+  function resolveSearchTermToPatientIds(term) {
+    const q = String(term ?? '').trim().toLowerCase();
+    if (!q) return [];
+    const mappedIds = searchPatients(q).map((item) => item.patient_id);
+    const directIds = state.records.filter((record) => String(record.patient_id ?? '').toLowerCase().includes(q)).map((record) => record.patient_id);
+    return Array.from(new Set([...mappedIds, ...directIds].filter(Boolean)));
+  }
+
+  function patientLabelForId(patientId) {
+    const mapping = findMappingByPatientId(patientId);
+    return mapping ? `Código local: ${mapping.original_patient_code} · ID seudonimizado: ${mapping.patient_id}` : `ID seudonimizado: ${patientId}`;
+  }
+
+  function patientSuggestions(term) {
+    const ids = resolveSearchTermToPatientIds(term);
+    return ids.map((patientId) => ({ patient_id: patientId, label: patientLabelForId(patientId) }));
+  }
 
   const VISIT_COUNTER_KEY = 'cambiosTAR_visit_counter';
   const LAST_VISIT_KEY = 'cambiosTAR_last_visit_at';
@@ -150,6 +261,7 @@
   }
 
   async function refresh() {
+    state.patientIdMap = loadPatientIdMap();
     state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion })));
     applyFilters(); renderDashboard(); renderPatientOptions();
   }
@@ -159,9 +271,9 @@
   }
 
   async function recordFromClinical(raw, origen) {
-    const pseudonymizationKey = getPseudonymizationKey();
-    if (!raw.patient_id && !hasPseudonymizationKey()) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
-    const patientId = raw.patient_id || await window.CambiosCrypto.pseudonymize(raw.historia, pseudonymizationKey);
+    const directPatientId = raw.patient_id || (isPseudonymizedPatientId(raw.historia) ? raw.historia : '');
+    if (!directPatientId && !hasPseudonymizationKey()) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
+    const patientId = directPatientId ? normalizePatientId(directPatientId) : await resolveClinicalPatientId(raw.historia);
     return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, tar_antiguo_medicamentos: raw.tar_antiguo_medicamentos, tar_nuevo_medicamentos: raw.tar_nuevo_medicamentos, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: raw.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: raw.tar_nuevo_normalizacion_manual, origen, id: raw.id });
   }
 
@@ -308,8 +420,9 @@
     updateFilterOptions();
     if (!$('records-table')) return;
     const from = $('filter-from')?.value || '', to = $('filter-to')?.value || '', year = $('filter-year')?.value || '', month = $('filter-month')?.value || '', reason = $('filter-reason')?.value || '';
-    const old = ($('filter-old')?.value || '').toLowerCase(), newer = ($('filter-new')?.value || '').toLowerCase(), origin = $('filter-origin')?.value || '', patient = ($('filter-patient')?.value || '').toLowerCase(), review = $('filter-review')?.value || '';
-    state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || r.patient_id.toLowerCase().includes(patient)) && (!review || (r.estado_revision || (isPendingReview(r) ? 'pendiente' : 'ok')) === review));
+    const old = ($('filter-old')?.value || '').toLowerCase(), newer = ($('filter-new')?.value || '').toLowerCase(), origin = $('filter-origin')?.value || '', patient = $('filter-patient')?.value || '', review = $('filter-review')?.value || '';
+    const patientIds = resolveSearchTermToPatientIds(patient);
+    state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || patientIds.includes(r.patient_id)) && (!review || (r.estado_revision || (isPendingReview(r) ? 'pendiente' : 'ok')) === review));
     renderRecordsTable();
   }
 
@@ -352,7 +465,7 @@
   function renderMapping(headers, sheet = null, missingFields = []) {
     const guess = window.CambiosIO.guessMapping(headers);
     const currentMapping = collectImportMapping();
-    const fields = [['fecha', 'Fecha'], ['historia', 'Número de historia clínica'], ['tar_antiguo', 'TAR antiguo'], ['tar_nuevo', 'TAR nuevo'], ['motivo', 'Motivo']];
+    const fields = [['fecha', 'Fecha'], ['historia', 'Código local / Patient ID'], ['tar_antiguo', 'TAR antiguo'], ['tar_nuevo', 'TAR nuevo'], ['motivo', 'Motivo']];
     const sheetSelector = state.excelSheets.length > 1
       ? `<label>Hoja de Excel<select id="excel-sheet-select">${state.excelSheets.map((item) => `<option value="${escapeHtml(item.name)}" ${sheet?.name === item.name ? 'selected' : ''}>${escapeHtml(item.name)} (${item.rows.length} filas)</option>`).join('')}</select></label>`
       : '';
@@ -434,9 +547,11 @@
       const valid = []; const errors = []; const duplicates = []; const warnings = [];
       for (const [index, row] of state.excelRows.entries()) {
         try {
-          const raw = { fecha: row[mapping.fecha], historia: row[mapping.historia], tar_antiguo: row[mapping.tar_antiguo], tar_nuevo: row[mapping.tar_nuevo], motivo: row[mapping.motivo] };
-          const missing = Object.entries(raw).find(([, value]) => String(value ?? '').trim() === '');
-          if (missing) throw Object.assign(new Error(`Campo obligatorio ausente: ${missing[0]}.`), { field: missing[0] });
+          const patientInput = normalizeOriginalPatientCode(row[mapping.historia]);
+          const raw = { fecha: row[mapping.fecha], historia: isPseudonymizedPatientId(patientInput) ? '' : patientInput, patient_id: isPseudonymizedPatientId(patientInput) ? patientInput : '', tar_antiguo: row[mapping.tar_antiguo], tar_nuevo: row[mapping.tar_nuevo], motivo: row[mapping.motivo] };
+          const missing = ['fecha', 'tar_antiguo', 'tar_nuevo', 'motivo'].find((field) => String(raw[field] ?? '').trim() === '');
+          if (missing) throw Object.assign(new Error(`Campo obligatorio ausente: ${missing}.`), { field: missing });
+          if (!raw.historia && !raw.patient_id) throw Object.assign(new Error('Campo obligatorio ausente: historia.'), { field: 'historia' });
           const record = await recordFromClinical(raw, 'histórico importado');
           if (!validInputRecord(record)) throw Object.assign(new Error('Campos obligatorios incompletos o fecha inválida.'), { field: !record.fecha ? 'fecha' : null });
           const key = window.CambiosIO.duplicateKey(record);
@@ -496,11 +611,33 @@
 
   function renderPatientOptions() {
     fillSelect('patient-select', uniqueOptions('patient_id'), 'Seleccione patient_id');
+    renderPatientSuggestions('');
     renderPatient();
   }
+
+  function selectedPatientId() {
+    return $('patient-select')?.value || $('patient-search')?.dataset.selectedPatientId || '';
+  }
+
+  function setSelectedPatientId(patientId) {
+    const normalized = normalizePatientId(patientId);
+    if ($('patient-select')) $('patient-select').value = normalized;
+    if ($('patient-search')) {
+      $('patient-search').dataset.selectedPatientId = normalized;
+      $('patient-search').value = normalized ? patientLabelForId(normalized) : '';
+    }
+  }
+
+  function renderPatientSuggestions(term) {
+    const box = $('patient-suggestions');
+    if (!box) return;
+    const suggestions = patientSuggestions(term).slice(0, 12);
+    box.innerHTML = suggestions.map((item) => `<button type="button" class="patient-suggestion" data-patient-id="${escapeHtml(item.patient_id)}">${escapeHtml(item.label)}</button>`).join('') || (term ? '<p class="small muted">Sin coincidencias.</p>' : '');
+  }
+
   function renderPatient() {
-    const id = $('patient-select').value; const rows = state.records.filter((r) => r.patient_id === id).sort((a, b) => a.fecha.localeCompare(b.fecha));
-    $('patient-summary').innerHTML = id ? `<div class="metric"><span>Total de cambios del paciente</span><strong>${rows.length}</strong></div><p><strong>Secuencia TAR:</strong> ${escapeHtml(rows.map((r) => normalizedNew(r)).join(' → ') || 'Sin datos')}</p>` : '<p>Seleccione un patient_id seudonimizado.</p>';
+    const id = selectedPatientId(); const rows = state.records.filter((r) => r.patient_id === id).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    $('patient-summary').innerHTML = id ? `<div class="metric"><span>Total de cambios del paciente</span><strong>${rows.length}</strong></div><p><strong>Patient ID:</strong> ${escapeHtml(id)}</p><p><strong>Secuencia TAR:</strong> ${escapeHtml(rows.map((r) => normalizedNew(r)).join(' → ') || 'Sin datos')}</p>` : '<p>Busque y seleccione un paciente por código local o patient_id seudonimizado.</p>';
     $('patient-timeline').innerHTML = rows.map((r) => `<div class="timeline-item"><strong>${r.fecha}</strong><span>${escapeHtml(r.tar_antiguo)} → ${escapeHtml(r.tar_nuevo)}</span><small>${escapeHtml(r.motivo_normalizado)} · ${escapeHtml(r.motivo_original)}</small></div>`).join('');
   }
 
@@ -600,10 +737,12 @@
     on('records-table', 'click', (e) => { if (e.target.dataset.edit) editRecord(e.target.dataset.edit); if (e.target.dataset.delete) deleteRecord(e.target.dataset.delete); });
     on('export-filtered-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.filtered, 'cambiosTAR_filtrado.xlsx'));
     on('export-filtered-csv', 'click', () => window.CambiosIO.exportCSV(state.filtered, 'cambiosTAR_filtrado.csv'));
-    on('patient-select', 'change', renderPatient);
-    on('export-patient-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.records.filter((r) => r.patient_id === $('patient-select')?.value), 'cambiosTAR_paciente.xlsx'));
-    on('export-patient-csv', 'click', () => window.CambiosIO.exportCSV(state.records.filter((r) => r.patient_id === $('patient-select')?.value), 'cambiosTAR_paciente.csv'));
-    on('patient-report-btn', 'click', () => { const id = $('patient-select')?.value; if (!id) return toast('Seleccione un patient_id.', 'error'); $('report-output').innerHTML = `<h3>Informe individual seudonimizado</h3><p>Patient ID: ${escapeHtml(id)}</p>` + window.CambiosReports.renderReport(window.CambiosReports.generateReport(state.records.filter((r) => r.patient_id === id), { label: 'Trayectoria completa', from: '', to: '' })); showSection('informes'); });
+    on('patient-select', 'change', () => { setSelectedPatientId($('patient-select')?.value); renderPatient(); });
+    on('patient-search', 'input', (e) => { e.target.dataset.selectedPatientId = ''; if ($('patient-select')) $('patient-select').value = ''; renderPatientSuggestions(e.target.value); const ids = resolveSearchTermToPatientIds(e.target.value); if (ids.length === 1 && normalizeOriginalPatientCode(e.target.value).length >= 3) { if ($('patient-select')) $('patient-select').value = ids[0]; e.target.dataset.selectedPatientId = ids[0]; renderPatient(); } });
+    on('patient-suggestions', 'click', (e) => { const button = e.target.closest('[data-patient-id]'); if (!button) return; setSelectedPatientId(button.dataset.patientId); renderPatientSuggestions(''); renderPatient(); });
+    on('export-patient-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.records.filter((r) => r.patient_id === selectedPatientId()), 'cambiosTAR_paciente.xlsx'));
+    on('export-patient-csv', 'click', () => window.CambiosIO.exportCSV(state.records.filter((r) => r.patient_id === selectedPatientId()), 'cambiosTAR_paciente.csv'));
+    on('patient-report-btn', 'click', () => { const id = selectedPatientId(); if (!id) return toast('Seleccione un patient_id.', 'error'); $('report-output').innerHTML = `<h3>Informe individual seudonimizado</h3><p>Patient ID: ${escapeHtml(id)}</p>` + window.CambiosReports.renderReport(window.CambiosReports.generateReport(state.records.filter((r) => r.patient_id === id), { label: 'Trayectoria completa', from: '', to: '' })); showSection('informes'); });
     on('generate-report-btn', 'click', generateReport);
     on('copy-report-btn', 'click', () => navigator.clipboard.writeText(state.lastReport?.comment || '').then(() => toast('Resumen copiado.')));
     on('print-report-btn', 'click', () => window.print());
@@ -628,6 +767,8 @@
     $('report-month').innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('');
     $('report-month').value = new Date().getMonth() + 1;
   }
+
+  window.CambiosPatients = { normalizeOriginalPatientCode, isPseudonymizedPatientId, loadPatientIdMap, savePatientIdMap, searchPatients, resolveSearchTermToPatientIds };
 
   window.updateSecurityState = updateSecurityState;
   window.updateSecurityWarnings = updateSecurityWarnings;

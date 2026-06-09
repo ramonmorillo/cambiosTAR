@@ -1,7 +1,7 @@
 (function () {
   const EXPECTED = {
     fecha: ['fecha', 'fecha cambio', 'fecha del cambio', 'marca temporal', 'timestamp', 'marca de tiempo', 'fecha registro', 'date'],
-    historia: ['numero de historia clinica', 'numero de historia clinico', 'numero historia', 'nhc', 'historia clinica', 'historia clinico', 'numero de historia', 'n historia', 'no historia', 'historia'],
+    historia: ['patient id', 'patient_id', 'paciente', 'numero de historia clinica', 'numero de historia clinico', 'numero historia', 'nhc', 'historia clinica', 'historia clinico', 'numero de historia', 'numero de historia', 'n historia', 'no historia', 'historia', 'codigo paciente', 'codigo de paciente'],
     tar_antiguo: ['tar antiguo', 'tar previo', 'tar anterior', 'tratamiento anterior', 'tratamiento previo', 'tratamiento antiguo', 'pauta previa', 'pauta anterior', 'pauta antigua'],
     tar_nuevo: ['tar nuevo', 'tar actual', 'tar posterior', 'tratamiento nuevo', 'tratamiento actual', 'tratamiento posterior', 'nueva pauta', 'pauta nueva'],
     motivo: ['motivo', 'motivo cambio', 'motivo del cambio', 'causa', 'causa del cambio', 'razon', 'razon del cambio']
