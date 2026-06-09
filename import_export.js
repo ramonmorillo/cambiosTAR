@@ -45,7 +45,7 @@
     return '';
   }
 
-  function deriveRecord({ fecha, patient_id, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado, tar_antiguo_medicamentos, tar_nuevo_medicamentos, tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual, normalizacion_manual, estado_revision }) {
+  function deriveRecord({ fecha, patient_id, original_patient_code, tar_antiguo, tar_nuevo, motivo_original, motivo_normalizado, motivo_detalle, origen, id, fecha_creacion, tar_antiguo_original, tar_antiguo_normalizado, tar_nuevo_original, tar_nuevo_normalizado, tar_antiguo_medicamentos, tar_nuevo_medicamentos, tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual, normalizacion_manual, estado_revision }) {
     const date = toDateString(fecha);
     const d = new Date(`${date}T00:00:00`);
     const year = d.getUTCFullYear();
@@ -65,6 +65,7 @@
       id: id || (crypto.randomUUID ? crypto.randomUUID() : `rec-${Date.now()}-${Math.random()}`),
       fecha: date,
       patient_id,
+      ...(String(original_patient_code ?? '').trim() ? { original_patient_code: String(original_patient_code ?? '').trim() } : {}),
       tar_antiguo_medicamentos: Array.isArray(tar_antiguo_medicamentos) ? tar_antiguo_medicamentos : (oldOriginal ? [{ nombre: oldOriginal, fuente: 'Importación/manual' }] : []),
       tar_antiguo_original: oldOriginal,
       tar_antiguo_normalizado: oldNorm.normalizado,
