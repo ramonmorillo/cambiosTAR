@@ -108,7 +108,7 @@
         <div id="record-key-ok" class="full alert info hidden" data-security-ok>Clave local configurada. Puede registrar cambios.</div>
         <div class="form-grid">
           <label>Fecha del cambio <input type="date" id="change-date" required /></label>
-          <label>Número de historia clínica <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
+          <label>Código local del paciente <input type="text" id="clinical-id" required placeholder="Solo se usa para generar patient_id" /></label>
           <div class="full alert info cima-box">
             <strong>Búsqueda CIMA/AEMPS:</strong> Solo se consulta el texto del medicamento. Nunca se envían datos del paciente.
             <p id="cima-status" class="small">La herramienta no depende de CIMA: si la consulta falla, puede añadir medicamentos manualmente.</p>
@@ -194,7 +194,8 @@
           <label>Año <select id="filter-year"><option value="">Todos</option></select></label><label>Mes <select id="filter-month"><option value="">Todos</option></select></label>
           <label>Motivo <select id="filter-reason"><option value="">Todos</option></select></label><label>TAR antiguo <input id="filter-old" type="text" /></label>
           <label>TAR nuevo <input id="filter-new" type="text" /></label><label>Origen <select id="filter-origin"><option value="">Todos</option><option>histórico importado</option><option>registro manual</option></select></label>
-          <label>Patient ID <input id="filter-patient" type="text" /></label>
+          <label>Buscar paciente <input id="filter-patient" type="text" placeholder="Código local o ID seudonimizado" /></label>
+          <p class="small muted full">El código local se utiliza solo para búsqueda interna. Los análisis y exportaciones utilizan el ID seudonimizado.</p>
           <label>Estado revisión <select id="filter-review"><option value="">Todos</option><option value="ok">OK</option><option value="pendiente">Pendiente</option></select></label>
         </div>
         <div class="button-row"><button class="btn secondary" id="clear-filters-btn">Limpiar filtros</button><button class="btn secondary" id="export-filtered-xlsx">Exportar tabla filtrada a Excel</button><button class="btn secondary" id="export-filtered-csv">Exportar tabla filtrada a CSV</button></div>
@@ -222,7 +223,12 @@
     <section id="paciente" class="view">
       <div class="section-title"><p class="eyebrow">Trayectoria por paciente</p><h2>Seguimiento seudonimizado</h2></div>
       <article class="card">
-        <label>Patient ID seudonimizado <select id="patient-select"><option value="">Seleccione patient_id</option></select></label>
+        <label>Buscar paciente por código local o ID seudonimizado
+          <input id="patient-search" type="text" placeholder="Código local o ID seudonimizado" autocomplete="off" />
+        </label>
+        <div id="patient-suggestions" class="patient-suggestions"></div>
+        <p class="small muted">El código local se utiliza solo para búsqueda interna. Los análisis y exportaciones utilizan el ID seudonimizado.</p>
+        <label class="hidden">Patient ID seudonimizado <select id="patient-select"><option value="">Seleccione patient_id</option></select></label>
         <div id="patient-summary" class="summary-box"></div>
         <div id="patient-timeline" class="timeline"></div>
         <div class="button-row"><button class="btn secondary" id="export-patient-xlsx">Exportar paciente Excel</button><button class="btn secondary" id="export-patient-csv">Exportar paciente CSV</button><button class="btn primary" id="patient-report-btn">Generar informe individual</button></div>
