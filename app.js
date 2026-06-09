@@ -32,11 +32,64 @@
     return /^PT-[A-Z0-9]+$/i.test(String(value ?? '').trim());
   }
 
+  function getRecordPatientId(record) {
+    return normalizePatientId(record?.patient_id ?? record?.patientId ?? record?.patientID ?? '');
+  }
+
+  function getRecordLocalCode(record) {
+    return normalizeOriginalPatientCode(
+      record?.original_patient_code ??
+      record?.originalPatientCode ??
+      record?.localPatientCode ??
+      record?.codigoPaciente ??
+      record?.codigo_paciente ??
+      record?.nhc ??
+      record?.NHC ??
+      record?.historia ??
+      record?.numeroHistoria ??
+      record?.codigo_local ??
+      ''
+    );
+  }
+
+  function getMapPatientId(item) {
+    return normalizePatientId(item?.patient_id ?? item?.patientId ?? item?.pseudoId ?? '');
+  }
+
+  function getMapLocalCode(item) {
+    return normalizeOriginalPatientCode(
+      item?.original_patient_code ??
+      item?.originalPatientCode ??
+      item?.localPatientCode ??
+      item?.codigoPaciente ??
+      item?.codigo_paciente ??
+      item?.nhc ??
+      item?.NHC ??
+      item?.historia ??
+      item?.numeroHistoria ??
+      item?.codigo_local ??
+      ''
+    );
+  }
+
+  function getAllStoredRecordsSafely() {
+    return Array.isArray(state.records) ? state.records : [];
+  }
+
+  function getPatientIdMapSafely() {
+    return Array.isArray(state.patientIdMap) ? state.patientIdMap : [];
+  }
+
+  function savePatientIdMapSafely(patientMap) {
+    savePatientIdMap(patientMap);
+    state.patientIdMap = loadPatientIdMap();
+  }
+
   function normalizeMapItem(item) {
-    const original = normalizeOriginalPatientCode(item?.original_patient_code);
-    const patientId = normalizePatientId(item?.patient_id);
+    const original = getMapLocalCode(item);
+    const patientId = getMapPatientId(item);
     if (!original || !patientId) return null;
-    return { original_patient_code: original, patient_id: patientId, created_at: item?.created_at || new Date().toISOString() };
+    return { original_patient_code: original, patient_id: patientId, created_at: item?.created_at || new Date().toISOString(), source: item?.source };
   }
 
   function loadPatientIdMap() {
@@ -87,8 +140,13 @@
     const normalized = normalizeOriginalPatientCode(originalCode);
     if (!normalized) return null;
     const existing = findMappingByOriginalCode(normalized);
-    if (existing) return existing.patient_id;
     const newPatientId = normalizePatientId(await window.CambiosCrypto.pseudonymize(normalized, getPseudonymizationKey()));
+    if (existing) {
+      if (normalizePatientId(existing.patient_id) !== newPatientId) {
+        throw new Error('Conflicto de seudonimización: este código local ya está asociado a otro patient_id. Revise los datos antes de continuar.');
+      }
+      return existing.patient_id;
+    }
     const conflict = findMappingByPatientId(newPatientId);
     if (conflict && conflict.original_patient_code !== normalized) {
       throw new Error('Conflicto de seudonimización: este código local ya está asociado a otro patient_id. Revise los datos antes de continuar.');
@@ -125,36 +183,60 @@
     if (!q) return [];
     const qLower = q.toLowerCase();
 
-    const exactOriginalMatches = state.patientIdMap
-      .filter((m) => String(m.original_patient_code ?? '').trim().toLowerCase() === qLower)
-      .map((m) => m.patient_id);
+    const allRecords = getAllStoredRecordsSafely();
+    const patientMap = getPatientIdMapSafely();
 
-    if (exactOriginalMatches.length > 0) return uniquePatientIds(exactOriginalMatches);
+    const exactLocalFromMap = patientMap
+      .filter((item) => getMapLocalCode(item).toLowerCase() === qLower)
+      .map(getMapPatientId)
+      .filter(Boolean);
 
-    const exactPatientIdMatches = state.patientIdMap
-      .filter((m) => String(m.patient_id ?? '').trim().toLowerCase() === qLower)
-      .map((m) => m.patient_id);
+    if (exactLocalFromMap.length > 0) return uniquePatientIds(exactLocalFromMap);
 
-    const exactRecordsPatientIdMatches = state.records
-      .filter((r) => String(r.patient_id ?? '').trim().toLowerCase() === qLower)
-      .map((r) => r.patient_id);
+    const exactLocalFromRecords = allRecords
+      .filter((record) => getRecordLocalCode(record).toLowerCase() === qLower)
+      .map(getRecordPatientId)
+      .filter(Boolean);
 
-    const exactPseudo = uniquePatientIds([...exactPatientIdMatches, ...exactRecordsPatientIdMatches]);
+    if (exactLocalFromRecords.length > 0) return uniquePatientIds(exactLocalFromRecords);
+
+    const exactPseudoFromRecords = allRecords
+      .filter((record) => getRecordPatientId(record).toLowerCase() === qLower)
+      .map(getRecordPatientId)
+      .filter(Boolean);
+
+    const exactPseudoFromMap = patientMap
+      .filter((item) => getMapPatientId(item).toLowerCase() === qLower)
+      .map(getMapPatientId)
+      .filter(Boolean);
+
+    const exactPseudo = uniquePatientIds([...exactPseudoFromRecords, ...exactPseudoFromMap]);
     if (exactPseudo.length > 0) return exactPseudo;
 
-    const partialMapMatches = state.patientIdMap
-      .filter((m) => {
-        const original = String(m.original_patient_code ?? '').toLowerCase();
-        const pseudo = String(m.patient_id ?? '').toLowerCase();
-        return original.includes(qLower) || pseudo.includes(qLower);
-      })
-      .map((m) => m.patient_id);
+    const partialLocalFromMap = patientMap
+      .filter((item) => getMapLocalCode(item).toLowerCase().includes(qLower))
+      .map(getMapPatientId)
+      .filter(Boolean);
 
-    const partialRecordMatches = state.records
-      .filter((r) => String(r.patient_id ?? '').toLowerCase().includes(qLower))
-      .map((r) => r.patient_id);
+    const partialLocalFromRecords = allRecords
+      .filter((record) => getRecordLocalCode(record).toLowerCase().includes(qLower))
+      .map(getRecordPatientId)
+      .filter(Boolean);
 
-    return uniquePatientIds([...partialMapMatches, ...partialRecordMatches]);
+    const partialLocal = uniquePatientIds([...partialLocalFromMap, ...partialLocalFromRecords]);
+    if (partialLocal.length > 0) return partialLocal;
+
+    const partialPseudoFromRecords = allRecords
+      .filter((record) => getRecordPatientId(record).toLowerCase().includes(qLower))
+      .map(getRecordPatientId)
+      .filter(Boolean);
+
+    const partialPseudoFromMap = patientMap
+      .filter((item) => getMapPatientId(item).toLowerCase().includes(qLower))
+      .map(getMapPatientId)
+      .filter(Boolean);
+
+    return uniquePatientIds([...partialPseudoFromRecords, ...partialPseudoFromMap]);
   }
 
   function resolveSearchTermToPatientIds(term) {
@@ -221,6 +303,98 @@
 
     return { originalConflicts, pseudoConflicts };
   }
+
+  function rebuildPatientIdMapFromRecords() {
+    const allRecords = getAllStoredRecordsSafely();
+    const patientMap = getPatientIdMapSafely();
+    let changed = false;
+
+    const existingPairs = new Set(patientMap.map((item) => `${getMapLocalCode(item)}|||${getMapPatientId(item)}`));
+    const byLocal = new Map();
+    const byPseudo = new Map();
+    patientMap.forEach((item) => {
+      const local = getMapLocalCode(item);
+      const pseudo = getMapPatientId(item);
+      if (local && pseudo && !byLocal.has(local)) byLocal.set(local, pseudo);
+      if (local && pseudo && !byPseudo.has(pseudo)) byPseudo.set(pseudo, local);
+    });
+
+    allRecords.forEach((record) => {
+      const local = getRecordLocalCode(record);
+      const pseudo = getRecordPatientId(record);
+      if (!local || !pseudo) return;
+
+      const mappedPseudo = byLocal.get(local);
+      if (mappedPseudo && mappedPseudo !== pseudo) {
+        console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: código local ya asociado a otro patient_id. No se sobrescribe.', { original_patient_code: local, patient_id_existente: mappedPseudo, patient_id_registro: pseudo });
+        return;
+      }
+      const mappedLocal = byPseudo.get(pseudo);
+      if (mappedLocal && mappedLocal !== local) {
+        console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: patient_id ya asociado a otro código local. No se sobrescribe.', { patient_id: pseudo, original_patient_code_existente: mappedLocal, original_patient_code_registro: local });
+        return;
+      }
+
+      const pairKey = `${local}|||${pseudo}`;
+      if (!existingPairs.has(pairKey)) {
+        patientMap.push({
+          original_patient_code: local,
+          patient_id: pseudo,
+          created_at: new Date().toISOString(),
+          source: 'rebuild_from_records'
+        });
+        existingPairs.add(pairKey);
+        byLocal.set(local, pseudo);
+        byPseudo.set(pseudo, local);
+        changed = true;
+      }
+    });
+
+    if (changed) savePatientIdMapSafely(patientMap);
+    return patientMap;
+  }
+
+  function debugCambiosTARPatient(searchTerm) {
+    const ids = resolvePatientSearchTermToIds(searchTerm);
+    const allRecords = getAllStoredRecordsSafely();
+
+    const records = allRecords.filter((record) => ids.includes(getRecordPatientId(record)));
+
+    console.log('[cambiosTAR debug] Search term:', searchTerm);
+    console.log('[cambiosTAR debug] Resolved IDs:', ids);
+    console.log('[cambiosTAR debug] Matching records:', records.length);
+
+    console.table(records.map((record) => ({
+      fecha: record.fecha ?? record.date ?? record.Fecha,
+      patient_id: record.patient_id ?? record.patientId ?? record.patientID,
+      original_patient_code:
+        record.original_patient_code ??
+        record.originalPatientCode ??
+        record.localPatientCode ??
+        record.codigoPaciente ??
+        record.codigo_paciente ??
+        record.nhc ??
+        record.NHC ??
+        record.historia ??
+        record.numeroHistoria ??
+        record.codigo_local,
+      tar_antiguo:
+        record.tar_antiguo_normalizado ??
+        record.tar_antiguo_original ??
+        record.tarAntiguo ??
+        record.oldTar,
+      tar_nuevo:
+        record.tar_nuevo_normalizado ??
+        record.tar_nuevo_original ??
+        record.tarNuevo ??
+        record.newTar,
+      motivo: record.motivo,
+      origen: record.origen
+    })));
+
+    return { searchTerm, ids, records };
+  }
+
 
   const VISIT_COUNTER_KEY = 'cambiosTAR_visit_counter';
   const LAST_VISIT_KEY = 'cambiosTAR_last_visit_at';
@@ -355,7 +529,8 @@
 
   async function refresh() {
     state.patientIdMap = loadPatientIdMap();
-    state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion })));
+    state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion, original_patient_code: getRecordLocalCode(r) })));
+    rebuildPatientIdMapFromRecords();
     applyFilters(); renderDashboard(); renderPatientOptions();
   }
 
@@ -366,8 +541,9 @@
   async function recordFromClinical(raw, origen) {
     const directPatientId = raw.patient_id || (isPseudonymizedPatientId(raw.historia) ? raw.historia : '');
     if (!directPatientId && !hasPseudonymizationKey()) throw new Error('No hay clave local de seudonimización configurada. Use solo datos ficticios o configure una clave antes de continuar.');
+    const originalPatientCode = directPatientId ? '' : getRecordLocalCode(raw);
     const patientId = directPatientId ? normalizePatientId(directPatientId) : await resolveClinicalPatientId(raw.historia);
-    return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, tar_antiguo_medicamentos: raw.tar_antiguo_medicamentos, tar_nuevo_medicamentos: raw.tar_nuevo_medicamentos, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: raw.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: raw.tar_nuevo_normalizacion_manual, origen, id: raw.id });
+    return window.CambiosIO.deriveRecord({ fecha: raw.fecha, patient_id: patientId, original_patient_code: originalPatientCode, tar_antiguo: raw.tar_antiguo, tar_nuevo: raw.tar_nuevo, tar_antiguo_medicamentos: raw.tar_antiguo_medicamentos, tar_nuevo_medicamentos: raw.tar_nuevo_medicamentos, motivo_original: raw.motivo, motivo_normalizado: raw.motivo_normalizado, motivo_detalle: raw.motivo_detalle, tar_antiguo_normalizado: raw.tar_antiguo_normalizado, tar_nuevo_normalizado: raw.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: raw.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: raw.tar_nuevo_normalizacion_manual, origen, id: raw.id });
   }
 
   function duplicateSet(records = state.records) { return new Set(records.map(window.CambiosIO.duplicateKey)); }
@@ -542,7 +718,7 @@
     const newTar = prompt('TAR nuevo original', r.tar_nuevo_original || r.tar_nuevo); if (newTar === null) return;
     const motivo = prompt(`Motivo normalizado (${window.CambiosNormalize.MOTIVOS.join(', ')})`, r.motivo_normalizado || 'Otros'); if (motivo === null) return;
     const detail = motivo === 'Otros' ? prompt('Motivo detalle', r.motivo_detalle || r.motivo_original || '') : (r.motivo_detalle || '');
-    await window.CambiosStorage.saveRecord(window.CambiosIO.deriveRecord({ ...r, fecha, patient_id: r.patient_id, tar_antiguo: oldTar, tar_nuevo: newTar, motivo_original: detail || motivo, motivo_normalizado: window.CambiosNormalize.MOTIVOS.includes(motivo) ? motivo : 'Otros', motivo_detalle: detail || '', origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion }));
+    await window.CambiosStorage.saveRecord(window.CambiosIO.deriveRecord({ ...r, fecha, patient_id: r.patient_id, tar_antiguo: oldTar, tar_nuevo: newTar, motivo_original: detail || motivo, motivo_normalizado: window.CambiosNormalize.MOTIVOS.includes(motivo) ? motivo : 'Otros', motivo_detalle: detail || '', origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion, original_patient_code: getRecordLocalCode(r) }));
     toast('Registro editado.'); await refresh();
   }
 
@@ -768,7 +944,7 @@
       const records = Array.isArray(data) ? data : data.records;
       if (!Array.isArray(records)) throw new Error('Backup JSON no válido.');
       if (Array.isArray(data.custom_tar_dictionary)) window.CambiosNormalize.saveCustomDictionary(data.custom_tar_dictionary);
-      const sanitized = records.map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen || 'backup importado', id: r.id, fecha_creacion: r.fecha_creacion }));
+      const sanitized = records.map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen || 'backup importado', id: r.id, fecha_creacion: r.fecha_creacion, original_patient_code: getRecordLocalCode(r) }));
       await window.CambiosStorage.bulkSave(sanitized);
       toast(`Backup importado: ${sanitized.length} registros.`); await refresh();
     } catch (error) { toast(error.message, 'error'); }
@@ -882,8 +1058,9 @@
     $('report-month').value = new Date().getMonth() + 1;
   }
 
-  window.CambiosPatients = { normalizeOriginalPatientCode, isPseudonymizedPatientId, loadPatientIdMap, savePatientIdMap, findMappingByOriginalCode, findMappingByPatientId, searchPatients, resolveSearchTermToPatientIds, resolvePatientSearchTermToIds, resolvePatientSearchTerm, debugPatientResolution, auditPatientMappings };
+  window.CambiosPatients = { normalizeOriginalPatientCode, isPseudonymizedPatientId, loadPatientIdMap, savePatientIdMap, findMappingByOriginalCode, findMappingByPatientId, searchPatients, resolveSearchTermToPatientIds, resolvePatientSearchTermToIds, resolvePatientSearchTerm, rebuildPatientIdMapFromRecords, debugPatientResolution, debugCambiosTARPatient, auditPatientMappings };
   window.debugPatientResolution = debugPatientResolution;
+  window.debugCambiosTARPatient = debugCambiosTARPatient;
   window.auditPatientMappings = auditPatientMappings;
 
   window.updateSecurityState = updateSecurityState;
