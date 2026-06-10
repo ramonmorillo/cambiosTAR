@@ -19,6 +19,9 @@
   function isPendingReview(r) { return !r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || !r.motivo_normalizado; }
 
   const PATIENT_ID_MAP_KEY = 'cambiosTAR_patientIdMap';
+  const LEGACY_PATIENT_CODE_ASSOCIATIONS = Object.freeze([
+    { original_patient_code: '53331', patient_id: 'PT-4586566AC3E7F6B9' }
+  ]);
 
   function normalizeOriginalPatientCode(value) {
     return String(value ?? '').trim();
@@ -29,7 +32,7 @@
   }
 
   function normalizePatientLookupInput(value) {
-    return String(value ?? '').trim().replace(/\s+/g, '');
+    return String(value ?? '').trim();
   }
 
   function isPseudonymizedPatientId(value) {
@@ -319,6 +322,37 @@
     return { originalConflicts, pseudoConflicts };
   }
 
+  function addPatientIdMapPair(patientMap, byLocal, byPseudo, existingPairs, originalCode, patientId, source) {
+    const local = normalizeOriginalPatientCode(originalCode);
+    const pseudo = normalizePatientId(patientId);
+    if (!local || !pseudo) return false;
+
+    const mappedPseudo = byLocal.get(local);
+    if (mappedPseudo && mappedPseudo !== pseudo) {
+      console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: código local ya asociado a otro patient_id. No se sobrescribe.', { original_patient_code: local, patient_id_existente: mappedPseudo, patient_id_registro: pseudo });
+      return false;
+    }
+    const mappedLocal = byPseudo.get(pseudo);
+    if (mappedLocal && mappedLocal !== local) {
+      console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: patient_id ya asociado a otro código local. No se sobrescribe.', { patient_id: pseudo, original_patient_code_existente: mappedLocal, original_patient_code_registro: local });
+      return false;
+    }
+
+    const pairKey = `${local}|||${pseudo}`;
+    if (existingPairs.has(pairKey)) return false;
+
+    patientMap.push({
+      original_patient_code: local,
+      patient_id: pseudo,
+      created_at: new Date().toISOString(),
+      source
+    });
+    existingPairs.add(pairKey);
+    byLocal.set(local, pseudo);
+    byPseudo.set(pseudo, local);
+    return true;
+  }
+
   function rebuildPatientIdMapFromRecords() {
     const allRecords = getAllStoredRecordsSafely();
     const patientMap = getPatientIdMapSafely();
@@ -335,34 +369,13 @@
     });
 
     allRecords.forEach((record) => {
-      const local = getRecordLocalCode(record);
-      const pseudo = getRecordPatientId(record);
-      if (!local || !pseudo) return;
+      if (addPatientIdMapPair(patientMap, byLocal, byPseudo, existingPairs, getRecordLocalCode(record), getRecordPatientId(record), 'rebuild_from_records')) changed = true;
+    });
 
-      const mappedPseudo = byLocal.get(local);
-      if (mappedPseudo && mappedPseudo !== pseudo) {
-        console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: código local ya asociado a otro patient_id. No se sobrescribe.', { original_patient_code: local, patient_id_existente: mappedPseudo, patient_id_registro: pseudo });
-        return;
-      }
-      const mappedLocal = byPseudo.get(pseudo);
-      if (mappedLocal && mappedLocal !== local) {
-        console.warn('[cambiosTAR] Conflicto reconstruyendo patientIdMap: patient_id ya asociado a otro código local. No se sobrescribe.', { patient_id: pseudo, original_patient_code_existente: mappedLocal, original_patient_code_registro: local });
-        return;
-      }
-
-      const pairKey = `${local}|||${pseudo}`;
-      if (!existingPairs.has(pairKey)) {
-        patientMap.push({
-          original_patient_code: local,
-          patient_id: pseudo,
-          created_at: new Date().toISOString(),
-          source: 'rebuild_from_records'
-        });
-        existingPairs.add(pairKey);
-        byLocal.set(local, pseudo);
-        byPseudo.set(pseudo, local);
-        changed = true;
-      }
+    LEGACY_PATIENT_CODE_ASSOCIATIONS.forEach((association) => {
+      const patientId = normalizePatientId(association.patient_id);
+      if (!patientId || !allRecords.some((record) => getRecordPatientId(record) === patientId)) return;
+      if (addPatientIdMapPair(patientMap, byLocal, byPseudo, existingPairs, association.original_patient_code, patientId, 'legacy_known_association')) changed = true;
     });
 
     if (changed) savePatientIdMapSafely(patientMap);
