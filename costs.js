@@ -1,7 +1,8 @@
 (function () {
   const SETTING_KEY = 'cost_catalog_state_v1';
   const COLUMNS = ['codigo_tar', 'nombre_tar', 'componentes', 'coste_anual_eur', 'fecha_inicio_vigencia', 'fecha_fin_vigencia', 'observaciones'];
-  const NOTE = 'Cálculo económico estimado a partir del catálogo de costes TAR cargado por el usuario. No sustituye a la contabilidad oficial ni a los sistemas de información económica del centro.';
+  const NOTE = 'El catálogo de costes es gestionado localmente por el usuario. Los cálculos económicos son estimaciones orientativas basadas en el catálogo activo y no sustituyen a la contabilidad oficial del centro.';
+  const EXAMPLE_CODE = 'EJEMPLO_BIC_FTC_TAF_BORRAR';
 
   function normalize(value) {
     return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s/_-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -9,15 +10,16 @@
   function euro(value) { return typeof value === 'number' ? `${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/año` : 'No disponible'; }
   function parseDate(value) { return window.CambiosIO?.toDateString(value) || ''; }
   function validDate(value) { return Boolean(value && !Number.isNaN(new Date(`${value}T00:00:00`).getTime())); }
-  function activeState() { return { catalog: [], batches: [], activeBatchId: '', importedAt: '' }; }
+  function activeState() { return { catalog: [], batches: [], activeBatchId: '', importedAt: '', activeFilename: '', lastValidationStatus: '', lastValidationAt: '', lastValidationFilename: '', lastValidationErrors: [] }; }
+  function isCurrent(row, today = new Date().toISOString().slice(0, 10)) { return row.fecha_inicio_vigencia <= today && (!row.fecha_fin_vigencia || today <= row.fecha_fin_vigencia); }
 
   async function loadState() {
     try { return { ...activeState(), ...((await window.CambiosStorage.loadSetting(SETTING_KEY)) || {}) }; } catch { return activeState(); }
   }
-  async function saveState(state) { await window.CambiosStorage.saveSetting(SETTING_KEY, state); return state; }
+  async function saveState(state) { await window.CambiosStorage.saveSetting(SETTING_KEY, { ...activeState(), ...(state || {}) }); return state; }
 
   function templateXLSX() {
-    const rows = [{ codigo_tar: 'EJEMPLO_BIC_FTC_TAF_BORRAR', nombre_tar: 'Ejemplo: Bictegravir/emtricitabina/tenofovir alafenamida', componentes: 'BIC/FTC/TAF', coste_anual_eur: 0, fecha_inicio_vigencia: '2026-01-01', fecha_fin_vigencia: '', observaciones: 'Fila de ejemplo: borrar antes de importar costes reales' }];
+    const rows = [{ codigo_tar: EXAMPLE_CODE, nombre_tar: 'Ejemplo: Bictegravir/emtricitabina/tenofovir alafenamida', componentes: 'BIC/FTC/TAF', coste_anual_eur: 0, fecha_inicio_vigencia: '2026-01-01', fecha_fin_vigencia: '', observaciones: 'Fila de ejemplo: borrar antes de importar costes reales' }];
     if (!window.XLSX) {
       const csv = [COLUMNS.join(';'), ...rows.map((row) => COLUMNS.map((h) => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
       return window.CambiosIO.downloadBlob(`\ufeff${csv}`, 'plantilla_costes_TAR.csv', 'text/csv;charset=utf-8');
@@ -26,83 +28,85 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header: COLUMNS }), 'Costes TAR');
     XLSX.writeFile(wb, 'plantilla_costes_TAR.xlsx');
   }
+  function costValue(raw) { return typeof raw === 'number' ? raw : Number(String(raw ?? '').trim().replace(',', '.')); }
+  function err(fila, campo, valor, motivo, sugerencia) { return { fila, campo, valor_recibido: String(valor ?? ''), motivo, sugerencia }; }
 
   function validateRows(rows, filename = '') {
-    const errors = [];
-    const normalizedRows = [];
+    const errors = [], warnings = [], normalizedRows = [];
     const headers = Object.keys(rows[0] || {});
     const headerMap = Object.fromEntries(headers.map((h) => [normalize(h).replace(/ /g, '_'), h]));
-    COLUMNS.forEach((col) => { if (!headerMap[col]) errors.push({ fila: 1, campo: col, motivo: `Falta la columna obligatoria ${col}` }); });
-    if (errors.length) return { valid: false, errors, rows: [] };
+    COLUMNS.forEach((col) => { if (!headerMap[col]) errors.push(err(1, col, '', `Falta la columna obligatoria ${col}`, 'Descargue la plantilla y respete los encabezados.')); });
+    if (errors.length) return { valid: false, errors, warnings, rows: [], filename };
     rows.forEach((row, index) => {
       const fila = index + 2;
       if (!Object.values(row).some((v) => String(v ?? '').trim())) return;
       const item = Object.fromEntries(COLUMNS.map((col) => [col, row[headerMap[col]]]));
       item.codigo_tar = String(item.codigo_tar || '').trim(); item.nombre_tar = String(item.nombre_tar || '').trim(); item.componentes = String(item.componentes || '').trim(); item.observaciones = String(item.observaciones || '').trim();
-      item.coste_anual_eur = typeof item.coste_anual_eur === 'number' ? item.coste_anual_eur : Number(String(item.coste_anual_eur || '').replace(',', '.'));
-      item.fecha_inicio_vigencia = parseDate(item.fecha_inicio_vigencia); item.fecha_fin_vigencia = parseDate(item.fecha_fin_vigencia);
-      if (!item.codigo_tar) errors.push({ fila, campo: 'codigo_tar', motivo: 'codigo_tar no puede estar vacío' });
-      if (!item.nombre_tar) errors.push({ fila, campo: 'nombre_tar', motivo: 'nombre_tar no puede estar vacío' });
-      if (!Number.isFinite(item.coste_anual_eur) || item.coste_anual_eur < 0) errors.push({ fila, campo: 'coste_anual_eur', motivo: 'Debe ser numérico y mayor o igual que 0' });
-      if (!validDate(item.fecha_inicio_vigencia)) errors.push({ fila, campo: 'fecha_inicio_vigencia', motivo: 'Fecha de inicio inválida' });
-      if (item.fecha_fin_vigencia && !validDate(item.fecha_fin_vigencia)) errors.push({ fila, campo: 'fecha_fin_vigencia', motivo: 'Fecha fin inválida' });
-      if (item.fecha_fin_vigencia && item.fecha_inicio_vigencia && item.fecha_fin_vigencia < item.fecha_inicio_vigencia) errors.push({ fila, campo: 'fecha_fin_vigencia', motivo: 'Fecha fin anterior a fecha inicio' });
+      const rawCost = item.coste_anual_eur;
+      item.coste_anual_eur = costValue(rawCost);
+      const rawStart = item.fecha_inicio_vigencia, rawEnd = item.fecha_fin_vigencia;
+      item.fecha_inicio_vigencia = parseDate(rawStart); item.fecha_fin_vigencia = parseDate(rawEnd);
+      if (item.codigo_tar === EXAMPLE_CODE || /fila de ejemplo/i.test(item.observaciones)) warnings.push(err(fila, 'codigo_tar', item.codigo_tar, 'Parece conservar la fila de ejemplo de la plantilla.', 'Elimine la fila de ejemplo antes de importar costes reales.'));
+      if (!item.codigo_tar) errors.push(err(fila, 'codigo_tar', row[headerMap.codigo_tar], 'codigo_tar no puede estar vacío', 'Indique un código estable para la pauta TAR.'));
+      if (!item.nombre_tar) errors.push(err(fila, 'nombre_tar', row[headerMap.nombre_tar], 'nombre_tar no puede estar vacío', 'Indique el nombre comercial o descripción de la pauta.'));
+      if (!Number.isFinite(item.coste_anual_eur) || item.coste_anual_eur < 0) errors.push(err(fila, 'coste_anual_eur', rawCost, 'El coste debe ser numérico y mayor o igual que 0', 'Use 6200 o 6200.00, sin texto ni símbolo €.'));
+      if (!validDate(item.fecha_inicio_vigencia)) errors.push(err(fila, 'fecha_inicio_vigencia', rawStart, 'Fecha de inicio inválida u obligatoria', 'Use formato AAAA-MM-DD.'));
+      if (rawEnd && !validDate(item.fecha_fin_vigencia)) errors.push(err(fila, 'fecha_fin_vigencia', rawEnd, 'Fecha fin inválida', 'Déjela vacía o use formato AAAA-MM-DD.'));
+      if (item.fecha_fin_vigencia && item.fecha_inicio_vigencia && item.fecha_fin_vigencia < item.fecha_inicio_vigencia) errors.push(err(fila, 'fecha_fin_vigencia', rawEnd, 'Fecha fin anterior a fecha inicio', 'La fecha fin debe ser igual o posterior a la fecha inicio.'));
       normalizedRows.push({ ...item, id: `cost-${Date.now()}-${index}`, import_batch_id: '', created_at: new Date().toISOString(), _fila: fila });
     });
     const byCode = new Map();
-    normalizedRows.forEach((r) => {
-      const dupKey = `${normalize(r.codigo_tar)}|${r.fecha_inicio_vigencia}`;
-      if (byCode.has(dupKey)) errors.push({ fila: r._fila, campo: 'codigo_tar', motivo: 'Duplicado exacto de codigo_tar con la misma fecha_inicio_vigencia' });
-      byCode.set(dupKey, r);
-    });
-    Object.values(Object.groupBy ? Object.groupBy(normalizedRows, (r) => normalize(r.codigo_tar)) : normalizedRows.reduce((a, r) => ((a[normalize(r.codigo_tar)] ||= []).push(r), a), {})).forEach((items) => {
+    normalizedRows.forEach((r) => { const dupKey = `${normalize(r.codigo_tar)}|${r.fecha_inicio_vigencia}`; if (byCode.has(dupKey)) errors.push(err(r._fila, 'codigo_tar', r.codigo_tar, 'Duplicado exacto de codigo_tar con la misma fecha_inicio_vigencia', 'Mantenga solo una fila por código e inicio de vigencia.')); byCode.set(dupKey, r); });
+    Object.values(normalizedRows.reduce((a, r) => ((a[normalize(r.codigo_tar)] ||= []).push(r), a), {})).forEach((items) => {
       items.sort((a, b) => a.fecha_inicio_vigencia.localeCompare(b.fecha_inicio_vigencia));
-      for (let i = 1; i < items.length; i += 1) if (!items[i - 1].fecha_fin_vigencia || items[i].fecha_inicio_vigencia <= items[i - 1].fecha_fin_vigencia) errors.push({ fila: items[i]._fila, campo: 'vigencia', motivo: `Solapamiento de vigencias para ${items[i].codigo_tar}` });
+      for (let i = 1; i < items.length; i += 1) if (!items[i - 1].fecha_fin_vigencia || items[i].fecha_inicio_vigencia <= items[i - 1].fecha_fin_vigencia) errors.push(err(items[i]._fila, 'vigencia', items[i].codigo_tar, `Solapamiento de vigencias para ${items[i].codigo_tar}`, 'Ajuste fecha_fin_vigencia de la versión anterior o fecha_inicio_vigencia de la nueva.'));
     });
-    return { valid: errors.length === 0, errors, rows: normalizedRows, filename };
+    return { valid: errors.length === 0, errors, warnings, rows: normalizedRows, filename };
+  }
+
+  async function recordFailedValidation(result, filename) {
+    const now = new Date().toISOString(); const batchId = `cost-failed-${now.replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+    const state = await loadState();
+    state.lastValidationStatus = 'failed'; state.lastValidationAt = now; state.lastValidationFilename = filename || ''; state.lastValidationErrors = result.errors || [];
+    state.batches = [...(state.batches || []), { id: batchId, imported_at: now, filename: filename || '', rows_imported: 0, status: 'fallido', errors: (result.errors || []).length, notes: (result.errors || []).slice(0, 5).map((e) => `${e.fila}:${e.campo} ${e.motivo}`).join(' | ') }];
+    await saveState(state); return state;
   }
 
   async function importRows(rows, filename) {
     const result = validateRows(rows, filename);
-    if (!result.valid) return result;
+    if (!result.valid) { await recordFailedValidation(result, filename); return result; }
     const now = new Date().toISOString(); const batchId = `cost-${now.replace(/[-:.TZ]/g, '').slice(0, 14)}`;
     const catalog = result.rows.map(({ _fila, ...r }) => ({ ...r, import_batch_id: batchId, created_at: now }));
     const state = await loadState();
-    state.catalog = catalog; state.activeBatchId = batchId; state.importedAt = now;
-    state.batches = [...(state.batches || []), { id: batchId, imported_at: now, filename: filename || '', rows_imported: catalog.length, status: 'activo', notes: '' }];
-    await saveState(state);
-    return { ...result, batchId, importedAt: now, rowsImported: catalog.length };
+    state.batches = (state.batches || []).map((b) => b.status === 'activo' ? { ...b, status: 'reemplazado' } : b);
+    state.catalog = catalog; state.activeBatchId = batchId; state.importedAt = now; state.activeFilename = filename || ''; state.lastValidationStatus = 'success'; state.lastValidationAt = now; state.lastValidationFilename = filename || ''; state.lastValidationErrors = [];
+    state.batches = [...state.batches, { id: batchId, imported_at: now, filename: filename || '', rows_imported: catalog.length, status: 'activo', errors: 0, notes: '' }];
+    await saveState(state); return { ...result, batchId, importedAt: now, rowsImported: catalog.length };
   }
+  async function clearActiveCatalog() {
+    const now = new Date().toISOString(); const state = await loadState();
+    const old = state.activeBatchId;
+    state.batches = (state.batches || []).map((b) => b.id === old && b.status === 'activo' ? { ...b, status: 'eliminado', deleted_at: now } : b);
+    state.catalog = []; state.activeBatchId = ''; state.importedAt = ''; state.activeFilename = ''; await saveState(state); return state;
+  }
+  function exportActiveCatalog(state) { const rows = ((state || {}).catalog || []).map((r) => Object.fromEntries(COLUMNS.map((c) => [c, r[c] ?? '']))); if (window.XLSX) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header: COLUMNS }), 'Costes TAR'); XLSX.writeFile(wb, 'catalogo_costes_TAR_activo.xlsx'); } else window.CambiosIO.exportCSV(rows, 'catalogo_costes_TAR_activo.csv'); }
 
-  function findCost(tar, date, catalog) {
-    const key = normalize(tar); if (!key) return { found: false, reason: 'TAR vacío' };
-    const candidates = catalog.filter((c) => [c.codigo_tar, c.nombre_tar, c.componentes].some((v) => normalize(v) === key));
-    if (!candidates.length) return { found: false, reason: 'TAR no encontrado en catálogo', tar };
-    const active = candidates.filter((c) => c.fecha_inicio_vigencia <= date && (!c.fecha_fin_vigencia || date <= c.fecha_fin_vigencia));
-    if (active.length !== 1) return { found: false, reason: active.length > 1 ? 'Duplicidad de coste vigente' : 'Sin coste vigente en la fecha', tar };
-    return { found: true, cost: active[0] };
-  }
-  function calculate(record, state) {
-    const catalog = state?.catalog || []; const date = record.fecha || new Date().toISOString().slice(0, 10);
-    const old = findCost(record.tar_antiguo_normalizado || record.tar_antiguo || record.tar_antiguo_original, date, catalog);
-    const newer = findCost(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original, date, catalog);
-    if (!old.found || !newer.found) return { coste_anual_tar_anterior_eur: '', coste_anual_tar_nuevo_eur: '', diferencia_anual_eur: '', impacto_economico: 'no_calculable', coste_calculable: 'no', version_catalogo_costes: state?.activeBatchId || '', fecha_importacion_catalogo_costes: state?.importedAt || '', missing_old: old.found ? '' : (old.tar || record.tar_antiguo_normalizado || record.tar_antiguo_original || ''), missing_new: newer.found ? '' : (newer.tar || record.tar_nuevo_normalizado || record.tar_nuevo_original || ''), error_coste: [old.found ? '' : old.reason, newer.found ? '' : newer.reason].filter(Boolean).join('; ') };
-    const diff = Number(old.cost.coste_anual_eur) - Number(newer.cost.coste_anual_eur);
-    return { coste_anual_tar_anterior_eur: Number(old.cost.coste_anual_eur), coste_anual_tar_nuevo_eur: Number(newer.cost.coste_anual_eur), diferencia_anual_eur: diff, impacto_economico: diff > 0 ? 'ahorro' : diff < 0 ? 'sobrecoste' : 'neutro', coste_calculable: 'si', version_catalogo_costes: state.activeBatchId || old.cost.import_batch_id || '', fecha_importacion_catalogo_costes: state.importedAt || '' };
-  }
+  function findCost(tar, date, catalog) { const key = normalize(tar); if (!key) return { found: false, reason: 'TAR vacío' }; const candidates = catalog.filter((c) => [c.codigo_tar, c.nombre_tar, c.componentes].some((v) => normalize(v) === key)); if (!candidates.length) return { found: false, reason: 'TAR no encontrado en catálogo', tar }; const active = candidates.filter((c) => c.fecha_inicio_vigencia <= date && (!c.fecha_fin_vigencia || date <= c.fecha_fin_vigencia)); if (active.length !== 1) return { found: false, reason: active.length > 1 ? 'Duplicidad de coste vigente' : 'Sin coste vigente en la fecha', tar }; return { found: true, cost: active[0] }; }
+  function calculate(record, state) { const catalog = state?.catalog || []; const date = record.fecha || new Date().toISOString().slice(0, 10); if (!catalog.length) return { coste_anual_tar_anterior_eur: '', coste_anual_tar_nuevo_eur: '', diferencia_anual_eur: '', impacto_economico: 'no_calculable', coste_calculable: 'no', version_catalogo_costes: '', fecha_importacion_catalogo_costes: '', missing_old: record.tar_antiguo_normalizado || record.tar_antiguo_original || '', missing_new: record.tar_nuevo_normalizado || record.tar_nuevo_original || '', error_coste: 'Sin catálogo activo' }; const old = findCost(record.tar_antiguo_normalizado || record.tar_antiguo || record.tar_antiguo_original, date, catalog); const newer = findCost(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original, date, catalog); if (!old.found || !newer.found) return { coste_anual_tar_anterior_eur: '', coste_anual_tar_nuevo_eur: '', diferencia_anual_eur: '', impacto_economico: 'no_calculable', coste_calculable: 'no', version_catalogo_costes: state?.activeBatchId || '', fecha_importacion_catalogo_costes: state?.importedAt || '', missing_old: old.found ? '' : (old.tar || record.tar_antiguo_normalizado || record.tar_antiguo_original || ''), missing_new: newer.found ? '' : (newer.tar || record.tar_nuevo_normalizado || record.tar_nuevo_original || ''), error_coste: [old.found ? '' : old.reason, newer.found ? '' : newer.reason].filter(Boolean).join('; ') }; const diff = Number(old.cost.coste_anual_eur) - Number(newer.cost.coste_anual_eur); return { coste_anual_tar_anterior_eur: Number(old.cost.coste_anual_eur), coste_anual_tar_nuevo_eur: Number(newer.cost.coste_anual_eur), diferencia_anual_eur: diff, impacto_economico: diff > 0 ? 'ahorro' : diff < 0 ? 'sobrecoste' : 'neutro', coste_calculable: 'si', version_catalogo_costes: state.activeBatchId || old.cost.import_batch_id || '', fecha_importacion_catalogo_costes: state.importedAt || '' }; }
   function enrichRecords(records, state) { return (records || []).map((r) => ({ ...r, impacto_coste: calculate(r, state) })); }
   function publicCostColumns(record, state) { const c = record.impacto_coste || calculate(record, state || {}); return { coste_anual_tar_anterior_eur: c.coste_anual_tar_anterior_eur, coste_anual_tar_nuevo_eur: c.coste_anual_tar_nuevo_eur, diferencia_anual_eur: c.diferencia_anual_eur, impacto_economico: c.impacto_economico, coste_calculable: c.coste_calculable, version_catalogo_costes: c.version_catalogo_costes, fecha_importacion_catalogo_costes: c.fecha_importacion_catalogo_costes }; }
-  window.CambiosCosts = { COLUMNS, NOTE, normalize, euro, loadState, saveState, templateXLSX, validateRows, importRows, calculate, enrichRecords, publicCostColumns };
+  window.CambiosCosts = { COLUMNS, NOTE, normalize, euro, loadState, saveState, templateXLSX, validateRows, importRows, clearActiveCatalog, exportActiveCatalog, isCurrent, calculate, enrichRecords, publicCostColumns };
 }());
 
 
 (function () {
   const chartRefs = {};
   function destroy(id) { if (chartRefs[id]) { chartRefs[id].destroy(); delete chartRefs[id]; } }
+  function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[ch])); }
   function table(rows) {
     const headers = Object.keys(rows[0] || {});
     if (!headers.length) return '<p class="small muted">Sin datos.</p>';
-    return `<table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    return `<table><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${headers.map((h) => `<td>${escapeHtml(r[h])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   }
   function aggregate(records, keyFn) {
     const map = new Map();
@@ -116,12 +120,23 @@
   function filtered(records) { const $ = (id) => document.getElementById(id); const from = $('cost-filter-from')?.value || '', to = $('cost-filter-to')?.value || '', year = $('cost-filter-year')?.value || '', month = $('cost-filter-month')?.value || '', reason = $('cost-filter-reason')?.value || '', type = $('cost-filter-type')?.value || ''; const old = ($('cost-filter-old')?.value || '').toLowerCase(), newer = ($('cost-filter-new')?.value || '').toLowerCase(); return records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || String(r.tar_antiguo_normalizado || r.tar_antiguo || '').toLowerCase().includes(old)) && (!newer || String(r.tar_nuevo_normalizado || r.tar_nuevo || '').toLowerCase().includes(newer)) && (!type || r.impacto_coste?.impacto_economico === type)); }
   function renderCharts(monthly, annual, accum) { if (!window.Chart) return; [['chart-cost-monthly', monthly, 'balance_neto_anual_estimado'], ['chart-cost-annual', annual, 'balance_neto_anual_estimado'], ['chart-cost-cumulative', accum, 'balance_economico_acumulado']].forEach(([id, rows, valueKey]) => { const canvas = document.getElementById(id); if (!canvas) return; destroy(id); chartRefs[id] = new Chart(canvas, { type: id.includes('cumulative') ? 'line' : 'bar', data: { labels: rows.map((r) => r.periodo), datasets: [{ label: '€', data: rows.map((r) => r[valueKey]), backgroundColor: '#0f766e', borderColor: '#075985', borderWidth: 2, tension: 0.3 }] }, options: { responsive: true, scales: { y: { beginAtZero: true } } } }); }); }
   function exportRows(rows, filename) { if (window.XLSX) { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Datos'); XLSX.writeFile(wb, filename); } else window.CambiosIO.exportCSV(rows, filename.replace(/\.xlsx$/i, '.csv')); }
+  function renderCatalogAdmin(state) {
+    const $ = (id) => document.getElementById(id); const catalog = state.catalog || []; const today = new Date().toISOString().slice(0, 10); const hasActive = catalog.length > 0 && Boolean(state.activeBatchId); const current = catalog.filter((c) => window.CambiosCosts.isCurrent(c, today)); const ended = catalog.filter((c) => c.fecha_fin_vigencia); const lastFailed = state.lastValidationStatus === 'failed';
+    if ($('cost-catalog-status')) $('cost-catalog-status').innerHTML = `<div class="alert ${hasActive ? 'info' : 'warning'}"><strong>Estado:</strong> ${lastFailed ? 'último intento de importación fallido' : (hasActive ? 'catálogo activo' : 'sin catálogo activo')}. ${!hasActive ? 'No hay ningún catálogo de costes activo. Descargue la plantilla, cumpliméntela y suba un archivo válido.' : ''} ${lastFailed ? 'El último archivo validado contiene errores críticos y no ha sustituido al catálogo activo.' : ''}</div>`;
+    if ($('cost-catalog-summary')) $('cost-catalog-summary').innerHTML = [['Fecha importación', state.importedAt || 'Sin catálogo'], ['Archivo importado', state.activeFilename || 'Sin catálogo'], ['Número de tratamientos activos', new Set(current.map((c) => c.codigo_tar)).size], ['Número de registros de coste', catalog.length], ['Versión o lote activo', state.activeBatchId || 'Sin catálogo'], ['Tratamientos vigentes actualmente', current.length], ['Tratamientos con fecha fin de vigencia', ended.length]].map(([l,v])=>`<div class="metric"><span>${escapeHtml(l)}</span><strong>${escapeHtml(v)}</strong></div>`).join('');
+    if ($('download-active-cost-catalog-btn')) $('download-active-cost-catalog-btn').disabled = !hasActive; if ($('delete-active-cost-catalog-btn')) $('delete-active-cost-catalog-btn').disabled = !hasActive;
+    const text = (($('catalog-filter-text')?.value || '')).toLowerCase(); const status = $('catalog-filter-status')?.value || '';
+    const visible = catalog.filter((r) => (!text || [r.codigo_tar, r.nombre_tar, r.componentes].some((v) => String(v || '').toLowerCase().includes(text))) && (!status || (status === 'vigentes' ? window.CambiosCosts.isCurrent(r, today) : !window.CambiosCosts.isCurrent(r, today)))).map((r) => ({ codigo_tar: r.codigo_tar, nombre_tar: r.nombre_tar, componentes: r.componentes, coste_anual_eur: r.coste_anual_eur, fecha_inicio_vigencia: r.fecha_inicio_vigencia, fecha_fin_vigencia: r.fecha_fin_vigencia, observaciones: r.observaciones, import_batch_id: r.import_batch_id, created_at: r.created_at }));
+    if ($('active-cost-catalog-table')) $('active-cost-catalog-table').innerHTML = hasActive ? table(visible) : '<p class="small muted">Sin catálogo activo.</p>';
+    const history = (state.batches || []).slice().reverse().map((b) => ({ import_batch_id: b.id, fecha_hora_importacion: b.imported_at, filename: b.filename, numero_filas_importadas: b.rows_imported, estado: b.status, errores_detectados: b.errors || 0, resumen: b.notes || '' }));
+    if ($('cost-catalog-history')) $('cost-catalog-history').innerHTML = table(history);
+  }
   function render(records, state) {
-    window.CambiosCostsState = state || window.CambiosCostsState || {}; const enriched = window.CambiosCosts.enrichRecords(records || [], window.CambiosCostsState); const $ = (id) => document.getElementById(id); if ($('cost-note')) $('cost-note').textContent = window.CambiosCosts.NOTE;
-    const catalog = window.CambiosCostsState.catalog || []; const active = catalog.filter((c) => !c.fecha_fin_vigencia).length; if ($('cost-catalog-summary')) $('cost-catalog-summary').innerHTML = [['Tratamientos importados', catalog.length], ['Fecha importación', window.CambiosCostsState.importedAt || 'Sin catálogo'], ['Costes vigentes sin fecha fin', active], ['Costes con fecha fin', catalog.length - active], ['Posibles incidencias', 0], ['Versión activa', window.CambiosCostsState.activeBatchId || 'Sin catálogo']].map(([l,v])=>`<div class="metric"><span>${l}</span><strong>${v}</strong></div>`).join('');
-    ['cost-filter-year','cost-filter-month','cost-filter-reason'].forEach((id) => { const el=$(id); if (!el) return; const old=el.value; const vals = id.includes('year') ? Array.from(new Set(enriched.map(r=>r.anio).filter(Boolean))).sort() : id.includes('month') ? Array.from({length:12},(_,i)=>i+1) : (window.CambiosNormalize?.MOTIVOS || []); el.innerHTML='<option value="">Todos</option>'+vals.map(v=>`<option value="${v}">${v}</option>`).join(''); el.value=old; });
+    window.CambiosCostsState = state || window.CambiosCostsState || {}; const enriched = window.CambiosCosts.enrichRecords(records || [], window.CambiosCostsState); const $ = (id) => document.getElementById(id); if ($('cost-note')) $('cost-note').textContent = (window.CambiosCostsState.catalog || []).length ? window.CambiosCosts.NOTE : 'No hay catálogo de costes activo. El impacto económico no puede calcularse.';
+    renderCatalogAdmin(window.CambiosCostsState);
+    ['cost-filter-year','cost-filter-month','cost-filter-reason'].forEach((id) => { const el=$(id); if (!el) return; const old=el.value; const vals = id.includes('year') ? Array.from(new Set(enriched.map(r=>r.anio).filter(Boolean))).sort() : id.includes('month') ? Array.from({length:12},(_,i)=>i+1) : (window.CambiosNormalize?.MOTIVOS || []); el.innerHTML='<option value="">Todos</option>'+vals.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join(''); el.value=old; });
     const rows = filtered(enriched); const monthly = aggregate(rows, (r) => r.fecha ? `${r.anio}-${String(r.mes).padStart(2,'0')}` : 'Sin fecha'); const annual = aggregate(rows, (r) => r.anio || 'Sin fecha').map((r) => ({ ...r, promedio_impacto_calculable: r.calculables ? r.balance_neto_anual_estimado / r.calculables : 0 })); const accum = cumulative(monthly); const missing = missingRows(rows); const s = summary(rows); window.CambiosEconomicRows = { impact: impactRows(rows), monthly, annual, cumulative: accum, missing };
-    if ($('cost-dashboard-cards')) $('cost-dashboard-cards').innerHTML = [['Total cambios', s.total], ['Calculables', s.calculables], ['No calculables', s.noCalc], ['% calculables', `${s.pct.toFixed(1)}%`], ['Ahorro anual total', window.CambiosCosts.euro(s.ahorro)], ['Sobrecoste anual total', window.CambiosCosts.euro(s.sobre)], ['Balance neto anual', window.CambiosCosts.euro(s.balance)], ['Media por cambio', window.CambiosCosts.euro(s.media)], ['Mediana por cambio', window.CambiosCosts.euro(s.mediana)]].map(([l,v])=>`<div class="metric"><span>${l}</span><strong>${v}</strong></div>`).join('');
+    if ($('cost-dashboard-cards')) $('cost-dashboard-cards').innerHTML = [['Total cambios', s.total], ['Calculables', s.calculables], ['No calculables', s.noCalc], ['% calculables', `${s.pct.toFixed(1)}%`], ['Ahorro anual total', window.CambiosCosts.euro(s.ahorro)], ['Sobrecoste anual total', window.CambiosCosts.euro(s.sobre)], ['Balance neto anual', window.CambiosCosts.euro(s.balance)], ['Media por cambio', window.CambiosCosts.euro(s.media)], ['Mediana por cambio', window.CambiosCosts.euro(s.mediana)]].map(([l,v])=>`<div class="metric"><span>${escapeHtml(l)}</span><strong>${escapeHtml(v)}</strong></div>`).join('');
     if ($('cost-impact-table')) $('cost-impact-table').innerHTML = table(window.CambiosEconomicRows.impact); if ($('cost-monthly-table')) $('cost-monthly-table').innerHTML = table(monthly); if ($('cost-annual-table')) $('cost-annual-table').innerHTML = table(annual); if ($('cost-cumulative-table')) $('cost-cumulative-table').innerHTML = table(accum); if ($('cost-missing-table')) $('cost-missing-table').innerHTML = table(missing); renderCharts(monthly, annual, accum);
   }
   async function readAndValidate(file) { const rows = await window.CambiosIO.readExcel(file); return window.CambiosCosts.validateRows(rows, file?.name || ''); }
