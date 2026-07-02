@@ -123,7 +123,10 @@
       tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual ? 'Sí' : 'No',
       estado_revision: r.estado_revision || ((!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado) ? 'pendiente' : 'ok'),
       normalizacion_manual: r.normalizacion_manual || r.tar_antiguo_normalizacion_manual || r.tar_nuevo_normalizacion_manual ? 'Sí' : 'No',
-      pendiente_revision: (!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || r.estado_revision === 'pendiente') ? 'Sí' : 'No'
+      pendiente_revision: (!r.tar_antiguo_reconocido || !r.tar_nuevo_reconocido || !r.motivo_clasificado || r.estado_revision === 'pendiente') ? 'Sí' : 'No',
+      ...(window.CambiosCosts?.publicCostColumns ? window.CambiosCosts.publicCostColumns(r, window.CambiosCostsState || {}) : {
+        coste_anual_tar_anterior_eur: '', coste_anual_tar_nuevo_eur: '', diferencia_anual_eur: '', impacto_economico: 'no_calculable', coste_calculable: 'no', version_catalogo_costes: '', fecha_importacion_catalogo_costes: ''
+      })
     }));
   }
 

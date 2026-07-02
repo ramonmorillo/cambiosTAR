@@ -14,6 +14,7 @@
   <script defer src="normalization.js?v=3"></script>
   <script defer src="import_export.js?v=3"></script>
   <script defer src="reports.js?v=3"></script>
+  <script defer src="costs.js?v=1"></script>
   <script defer src="charts.js?v=3"></script>
   <script defer src="app.js?v=3"></script>
 </head>
@@ -28,6 +29,7 @@
       <a href="#importar" data-section-link="importar">Importar Excel</a>
       <a href="#registros" data-section-link="registros">Base</a>
       <a href="#dashboard" data-section-link="dashboard">Dashboard</a>
+      <a href="#costes" data-section-link="costes">Costes e impacto económico</a>
       <a href="#paciente" data-section-link="paciente">Paciente</a>
       <a href="#informes" data-section-link="informes">Informes</a>
       <a href="#exportacion" data-section-link="exportacion">Copias</a>
@@ -218,6 +220,15 @@
         <article class="card wide"><h3>Transiciones por motivo</h3><canvas id="chart-transition-reason"></canvas></article>
         <article class="card wide"><h3>Sankey TAR antiguo → TAR nuevo</h3><div id="sankey-chart"></div></article>
       </div>
+    </section>
+
+
+    <section id="costes" class="view">
+      <div class="section-title"><p class="eyebrow">Costes e impacto económico TAR</p><h2>Costes e impacto económico</h2></div>
+      <article class="card"><h3>1. Descargar plantilla de costes TAR</h3><p>Plantilla local sin datos de pacientes para cumplimentar el catálogo anual de costes.</p><button class="btn primary" id="download-cost-template-btn">Descargar plantilla Excel de costes TAR</button></article>
+      <article class="card"><h3>2. Subir o actualizar catálogo de costes</h3><p>Seleccione un archivo <strong>.xlsx</strong> con las columnas requeridas. Si hay errores críticos no se actualiza el catálogo activo.</p><input id="cost-excel-file" type="file" accept=".xlsx,.xls" /><div class="button-row"><button class="btn primary" id="validate-cost-excel-btn" disabled>Validar catálogo</button><button class="btn secondary" id="import-cost-catalog-btn" disabled>Guardar catálogo validado</button></div><div id="cost-validation-summary" class="summary-box"></div><div id="cost-validation-errors" class="table-wrap"></div></article>
+      <article class="card"><h3>3. Validación y resumen del catálogo</h3><div id="cost-catalog-summary" class="metric-grid compact-metrics"></div></article>
+      <article class="card"><h3>4. Dashboard económico</h3><p class="alert info" id="cost-note"></p><div class="filters form-grid compact"><label>Desde <input type="date" id="cost-filter-from" /></label><label>Hasta <input type="date" id="cost-filter-to" /></label><label>Año <select id="cost-filter-year"><option value="">Todos</option></select></label><label>Mes <select id="cost-filter-month"><option value="">Todos</option></select></label><label>Motivo <select id="cost-filter-reason"><option value="">Todos</option></select></label><label>TAR anterior <input id="cost-filter-old" type="text" /></label><label>TAR nuevo <input id="cost-filter-new" type="text" /></label><label>Tipo <select id="cost-filter-type"><option value="">Todos</option><option value="ahorro">Solo ahorros</option><option value="sobrecoste">Solo sobrecostes</option><option value="no_calculable">Solo no calculables</option></select></label></div><div class="button-row"><button class="btn secondary" id="clear-cost-filters-btn">Limpiar filtros</button><button class="btn secondary" id="export-cost-impact-xlsx">Exportar impacto por cambio</button><button class="btn secondary" id="export-cost-monthly-xlsx">Exportar resumen mensual</button><button class="btn secondary" id="export-cost-annual-xlsx">Exportar resumen anual</button><button class="btn secondary" id="export-cost-cumulative-xlsx">Exportar histórico acumulado</button><button class="btn secondary" id="export-cost-missing-xlsx">Exportar TAR no encontrados</button></div><div id="cost-dashboard-cards" class="metric-grid"></div><div class="chart-grid"><article class="card"><h3>Balance mensual</h3><canvas id="chart-cost-monthly"></canvas></article><article class="card"><h3>Balance anual</h3><canvas id="chart-cost-annual"></canvas></article><article class="card wide"><h3>Balance acumulado</h3><canvas id="chart-cost-cumulative"></canvas></article></div><h3>Impacto por cambio</h3><div id="cost-impact-table" class="table-wrap"></div><h3>Resumen mensual</h3><div id="cost-monthly-table" class="table-wrap"></div><h3>Resumen anual</h3><div id="cost-annual-table" class="table-wrap"></div><h3>Histórico acumulado</h3><div id="cost-cumulative-table" class="table-wrap"></div><h3>Cambios no calculables</h3><div id="cost-missing-table" class="table-wrap"></div></article>
     </section>
 
     <section id="paciente" class="view">
