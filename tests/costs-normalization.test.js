@@ -15,6 +15,18 @@ for (const value of ['DOR', 'dor', 'Dor', 'dOr']) {
   assert.equal(r.cost.codigo_tar, 'DOR');
 }
 {
+  assert.equal(C.normalizeTarToken('DRV'), 'DAR');
+  assert.equal(C.normalizeTarToken('DAR'), 'DAR');
+  assert.equal(C.normalizeTarToken('COBI'), 'COB');
+  assert.equal(C.normalizeTarToken('COB'), 'COB');
+  assert.equal(C.normalizeTarToken('dolutegravir'), 'DTG');
+  assert.equal(C.normalizeTarToken('Doravirina'), 'DOR');
+  assert.equal(C.normalizeComponents('DRV/COBI'), 'DAR/COB');
+  assert.equal(C.normalizeComponents('DAR/COB'), 'DAR/COB');
+  assert.equal(C.normalizeComponents('darunavir/cobicistat'), 'DAR/COB');
+  assert.equal(C.normalizeComponents('DRV / COBI'), 'DAR/COB');
+}
+{
   const r = calc('FTC/TAF/BIC', [row('BIC/FTC/TAF', 6059)]);
   assert.equal(r.found, true);
   assert.equal(r.cost.coste_anual_eur, 6059);

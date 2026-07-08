@@ -9,9 +9,37 @@ function row(codigo_tar, coste_anual_eur) {
 }
 function state(catalog) { return { catalog, aliases: [], activeBatchId: 'test', importedAt: '2026-01-01' }; }
 function calc(tar, catalog) {
-  return C.findCost(tar, '2024-06-08', catalog, []);
+  return C.findCost(tar, '2026-07-08', catalog, []);
 }
 
+{
+  const catalog = [row('DTG', 4562), row('DOR', 2011), { ...row('Darunavir/cobicistat', 2898), componentes: 'DAR/COB' }];
+  const old = calc('DTG + DRV/COBI', catalog);
+  const newer = calc('DTG + DOR', catalog);
+  assert.equal(old.found, true);
+  assert.equal(newer.found, true);
+  assert.equal(old.cost.coste_anual_eur, 7460);
+  assert.equal(newer.cost.coste_anual_eur, 6573);
+  assert.equal(newer.cost.coste_anual_eur - old.cost.coste_anual_eur, -887);
+  const impact = C.calculate({ fecha: '2026-07-08', tar_antiguo: 'DTG + DRV/COBI', tar_nuevo: 'DTG + DOR' }, state(catalog));
+  assert.equal(impact.coste_calculable, 'si');
+  assert.equal(impact.coste_anual_tar_anterior_eur, 7460);
+  assert.equal(impact.coste_anual_tar_nuevo_eur, 6573);
+  assert.equal(impact.diferencia_anual_eur, 887);
+}
+{
+  const catalog = [row('DTG', 4562), row('DOR', 2011), { ...row('Darunavir/cobicistat', 2898), componentes: 'DAR/COB' }];
+  assert.equal(C.resolveTarCost('DRV/COBI', '2026-07-08', catalog).total_cost, 2898);
+  assert.match(C.resolveTarCost('XYZ', '2026-07-08', catalog).trace, /XYZ/);
+}
+{
+  const regressionCatalog = ['BIC/FTC/TAF', 'DTG/3TC', 'CAB/RPV LA', 'DTG/RPV', 'RAL', 'FTC/TAF', 'FTC/TDF', 'ABC/3TC'].map((code, i) => row(code, 1000 + i));
+  regressionCatalog.forEach((item) => {
+    const r = calc(item.codigo_tar, regressionCatalog);
+    assert.equal(r.found, true);
+    assert.equal(r.cost.coste_anual_eur, item.coste_anual_eur);
+  });
+}
 {
   const r = calc('DTG + DOR', [row('DTG', 3000), row('DOR', 2500)]);
   assert.equal(r.found, true);
