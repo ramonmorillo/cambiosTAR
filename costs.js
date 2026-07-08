@@ -11,7 +11,24 @@
     { alias: 'Eviplera', codigo_tar: 'FTC/TDF/RPV' }, { alias: 'Odefsey', codigo_tar: 'FTC/TAF/RPV' },
     { alias: 'RIL', codigo_tar: 'RPV' }
   ];
-  const COMPONENT_ALIASES = { ril: 'rpv' };
+  const ALIASES = {
+    // El catálogo económico puede usar DAR/COB mientras la práctica clínica registra
+    // DRV/COBI. Se normalizan ambos a los códigos económicos canónicos para evitar
+    // pérdidas de coste en TAR compuestos como DTG + DRV/COBI.
+    DRV: 'DAR', DARUNAVIR: 'DAR', DAR: 'DAR',
+    COBI: 'COB', COBICISTAT: 'COB', COB: 'COB',
+    DOLUTEGRAVIR: 'DTG', DTG: 'DTG',
+    DORAVIRINA: 'DOR', DORAVIRINE: 'DOR', DOR: 'DOR',
+    RILPIVIRINA: 'RPV', RILPIVIRINE: 'RPV', RIL: 'RPV', RPV: 'RPV',
+    RALTEGRAVIR: 'RAL', RAL: 'RAL',
+    BICTEGRAVIR: 'BIC', BIC: 'BIC',
+    EMTRICITABINA: 'FTC', EMTRICITABINE: 'FTC', FTC: 'FTC',
+    'TENOFOVIR ALAFENAMIDA': 'TAF', TAF: 'TAF',
+    'TENOFOVIR DISOPROXIL': 'TDF', 'TENOFOVIR DISOPROXIL FUMARATO': 'TDF', 'TENOFOVIR DISOPROXILO': 'TDF', TDF: 'TDF',
+    ABACAVIR: 'ABC', ABC: 'ABC',
+    LAMIVUDINA: '3TC', LAMIVUDINE: '3TC', '3TC': '3TC',
+    CABOTEGRAVIR: 'CAB', CAB: 'CAB'
+  };
   const EXAMPLE_CODE = 'EJEMPLO_BIC_FTC_TAF_BORRAR';
 
   function normalize(value) {
@@ -22,8 +39,22 @@
       .replace(/\s+/g, ' ')
       .trim();
   }
+  function normalizeTarToken(value) {
+    const cleaned = normalize(value).toUpperCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
+    return ALIASES[cleaned] || cleaned;
+  }
+  function normalizeComponents(value) {
+    const cleaned = String(value || '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+    const parts = cleaned.split(/\s*[/_,;-]\s*/).map(normalizeTarToken).filter(Boolean);
+    return parts.join('/');
+  }
   function normalizeTarText(value) { return normalize(value); }
-  function applyComponentAliases(value) { return normalize(value).split('/').map((p) => COMPONENT_ALIASES[p] || p).join('/'); }
+  function applyComponentAliases(value) {
+    const normalized = normalize(value);
+    const aliasesByLength = Object.keys(ALIASES).sort((a, b) => b.length - a.length);
+    const expanded = aliasesByLength.reduce((text, alias) => text.replace(new RegExp(alias.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ALIASES[alias].toLowerCase()), normalized);
+    return expanded.split('/').map((p) => normalizeTarToken(p).toLowerCase()).join('/');
+  }
   function canonicalizeCombination(value) { const parts = applyComponentAliases(value).split('/').map((p) => p.trim()).filter(Boolean); return parts.length > 1 ? parts.sort().join('/') : (parts[0] || ''); }
   function compactKey(value) { return applyComponentAliases(value).replace(/[\s/+\-,;]/g, ''); }
   function splitComponents(value) { return canonicalizeCombination(value); }
@@ -94,6 +125,12 @@
       if (item.fecha_fin_vigencia && item.fecha_inicio_vigencia && item.fecha_fin_vigencia < item.fecha_inicio_vigencia) errors.push(err(fila, 'fecha_fin_vigencia', rawEnd, 'Fecha fin anterior a fecha inicio', 'La fecha fin debe ser igual o posterior a la fecha inicio.'));
       normalizedRows.push({ ...item, id: `cost-${Date.now()}-${index}`, import_batch_id: '', created_at: new Date().toISOString(), _fila: fila });
     });
+    normalizedRows.forEach((r) => {
+      r.codigo_tar_normalizado = applyComponentAliases(r.codigo_tar);
+      r.nombre_tar_normalizado = applyComponentAliases(r.nombre_tar);
+      r.componentes_normalizados = normalizeComponents(r.componentes || r.codigo_tar);
+      r.componentes_set = r.componentes_normalizados.split('/').filter(Boolean);
+    });
     const byCode = new Map();
     normalizedRows.forEach((r) => { const dupKey = `${normalize(r.codigo_tar)}|${r.fecha_inicio_vigencia}`; if (byCode.has(dupKey)) errors.push(err(r._fila, 'codigo_tar', r.codigo_tar, 'Duplicado exacto de codigo_tar con la misma fecha_inicio_vigencia', 'Mantenga solo una fila por código e inicio de vigencia.')); byCode.set(dupKey, r); });
     Object.values(normalizedRows.reduce((a, r) => ((a[normalize(r.codigo_tar)] ||= []).push(r), a), {})).forEach((items) => {
@@ -139,9 +176,12 @@
     const componentKey = canonicalizeCombination(resolvedKey); const compact = compactKey(resolvedKey);
     const candidates = catalog.filter((c) => {
       const fields = [c.codigo_tar, c.componentes, c.nombre_tar].map((v) => normalize(v));
-      const canonFields = [c.codigo_tar, c.componentes].map((v) => canonicalizeCombination(v));
+      const normalizedFields = [c.codigo_tar_normalizado, c.nombre_tar_normalizado, c.componentes_normalizados].map((v) => applyComponentAliases(v));
+      const canonFields = [c.codigo_tar, c.componentes, c.componentes_normalizados].map((v) => canonicalizeCombination(v));
       const compactFields = [c.codigo_tar, c.componentes, c.nombre_tar].map((v) => compactKey(v));
-      return fields.includes(resolvedKey) || canonFields.includes(componentKey) || compactFields.includes(compact);
+      const setKey = componentKey.split('/').filter(Boolean).sort().join('/');
+      const componentSet = Array.isArray(c.componentes_set) ? c.componentes_set.map(normalizeTarToken).map((v) => v.toLowerCase()).sort().join('/') : canonicalizeCombination(c.componentes_normalizados || c.componentes || c.codigo_tar);
+      return fields.includes(resolvedKey) || normalizedFields.includes(resolvedKey) || canonFields.includes(componentKey) || compactFields.includes(compact) || (setKey && componentSet === setKey);
     });
     if (!candidates.length) return { found: false, code: 'tar_no_encontrado', reason: alias ? 'alias_sin_coste_en_catalogo' : 'TAR no encontrado en catálogo', tar, normalized: resolvedKey, search: alias ? `alias→${alias.codigo_tar}` : 'codigo_tar/componentes/nombre_tar/componentes_canonicos' };
     const active = candidates.filter((c) => c.fecha_inicio_vigencia <= date && (!c.fecha_fin_vigencia || date <= c.fecha_fin_vigencia));
@@ -192,11 +232,19 @@
     return { originalValue, resolvedValue: 'CAB/RPV LA', aliasApplied: true, aliasReason: 'Alias contextual temporal: RPV → CAB/RPV LA desde 2024 aplicado solo a TAR nuevo', ruleId: 'RPV_TO_CAB_RPV_LA_FROM_2024' };
   }
   function costBreakdown(result) { const parts = (result?.componentes || []).filter((c) => c.coste_anual_eur !== null && c.coste_anual_eur !== undefined).map((c) => `${c.original || c.codigo_tar_resuelto}=${c.coste_anual_eur}`); if (result?.found) parts.push(`total=${Number(result.cost?.coste_anual_eur)}`); return parts.join('; '); }
+  function resolveTarCost(tarText, fechaCambio, costTable, aliases = []) {
+    const date = typeof fechaCambio === 'string' ? fechaCambio : (fechaCambio instanceof Date ? fechaCambio.toISOString().slice(0, 10) : '');
+    const result = findCost(tarText, date, costTable || [], aliases);
+    const unresolved = (result.componentes_no_encontrados || []).filter(Boolean);
+    if (!result.found && !unresolved.length) unresolved.push(String(tarText || '').trim());
+    const trace = result.found ? `Coste calculado como: ${costBreakdown(result)}` : `No calculable: no se encontró coste vigente para ${unresolved.join(', ')}`;
+    return { original_text: String(tarText || ''), normalized_text: result.normalized || applyComponentAliases(tarText), total_cost: result.found ? Number(result.cost.coste_anual_eur) : null, calculable: Boolean(result.found), matched_items: result.componentes || (result.found ? [result.cost] : []), unresolved_items: unresolved, trace };
+  }
   function noCalc(record, state, old, newer, code, newAlias = null) { return { coste_anual_tar_anterior_eur: '', coste_anual_tar_nuevo_eur: '', diferencia_anual_eur: '', impacto_economico: 'no_calculable', coste_calculable: 'no', version_catalogo_costes: state?.activeBatchId || '', fecha_importacion_catalogo_costes: state?.importedAt || '', missing_old: old?.found ? '' : (old?.tar || record.tar_antiguo_normalizado || record.tar_antiguo_original || ''), missing_new: newer?.found ? '' : (newer?.tar || record.tar_nuevo_normalizado || record.tar_nuevo_original || ''), error_coste: code, motivo_no_calculable: code, tar_anterior_normalizado_coste: old?.normalized || normalize(record.tar_antiguo_normalizado || record.tar_antiguo || record.tar_antiguo_original), tar_nuevo_normalizado_coste: newer?.normalized || normalize(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original), resultado_busqueda_tar_anterior: old?.found ? 'encontrado' : (old?.reason || ''), resultado_busqueda_tar_nuevo: newer?.found ? 'encontrado' : (newer?.reason || ''), tar_anterior_tipo: old?.tipo_tar || 'simple', tar_nuevo_tipo: newer?.tipo_tar || 'simple', tar_anterior_componentes_detectados: detectedList(old), tar_nuevo_componentes_detectados: detectedList(newer), tar_anterior_componentes_no_encontrados: missingList(old), tar_nuevo_componentes_no_encontrados: missingList(newer), tar_anterior_componentes_resueltos: resolvedList(old), tar_nuevo_componentes_resueltos: resolvedList(newer), tar_anterior_componentes_canonicos: old?.componentes_canonicos || '', tar_nuevo_componentes_canonicos: newer?.componentes_canonicos || '', tar_anterior_metodo_match: old?.match_method || old?.search || '', tar_nuevo_metodo_match: newer?.match_method || newer?.search || '', alias_aplicados: [aliasList(old), aliasList(newer)].filter(Boolean).join(', '), tar_anterior_desglose_costes: costBreakdown(old), tar_nuevo_desglose_costes: costBreakdown(newer), tar_nuevo_original_calculo: newAlias?.originalValue || String(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original || '').trim(), tar_nuevo_usado_calculo: newAlias?.resolvedValue || String(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original || '').trim(), alias_contextual_aplicado: newAlias?.aliasApplied ? 'si' : 'no', alias_contextual_regla: newAlias?.ruleId || newAlias?.attemptedAliasRuleId || '', alias_contextual_motivo: newAlias?.aliasApplied ? 'RPV como TAR nuevo desde 2024 interpretado como CAB/RPV LA' : (newAlias?.attemptedAliasReason || '') }; }
   function calculate(record, state) { const catalog = state?.catalog || []; const aliases = state?.aliases || []; const date = record.fecha || ''; const rawNewTar = record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original; if (!catalog.length || !state?.activeBatchId) return noCalc(record, state, null, null, 'catalogo_no_activo'); if (!date) return noCalc(record, state, null, null, 'fecha_cambio_no_disponible'); const newAlias = resolveContextualTarAlias(rawNewTar, 'tar_nuevo', date, catalog, aliases); const old = findCost(record.tar_antiguo_normalizado || record.tar_antiguo || record.tar_antiguo_original, date, catalog, aliases); const newer = findCost(newAlias.resolvedValue, date, catalog, aliases); if (!old.found || !newer.found) { let code = !old.found && !newer.found ? 'ambos_tar_no_encontrados' : (!old.found ? 'tar_anterior_no_encontrado' : 'tar_nuevo_no_encontrado'); if (old.code === 'sin_coste_vigente' && newer.code === 'sin_coste_vigente') code = 'sin_coste_vigente_para_fecha_cambio'; else if (old.code === 'sin_coste_vigente') code = 'sin_coste_vigente_tar_anterior'; else if (newer.code === 'sin_coste_vigente') code = 'sin_coste_vigente_tar_nuevo'; if (old.code === 'coste_duplicado_o_solapado' || newer.code === 'coste_duplicado_o_solapado') code = 'coste_duplicado_o_solapado'; return noCalc(record, state, old, newer, code, newAlias); } const diff = Number(old.cost.coste_anual_eur) - Number(newer.cost.coste_anual_eur); return { coste_anual_tar_anterior_eur: Number(old.cost.coste_anual_eur), coste_anual_tar_nuevo_eur: Number(newer.cost.coste_anual_eur), diferencia_anual_eur: diff, impacto_economico: diff > 0 ? 'ahorro' : diff < 0 ? 'sobrecoste' : 'neutro', coste_calculable: 'si', version_catalogo_costes: state.activeBatchId || old.cost.import_batch_id || '', fecha_importacion_catalogo_costes: state.importedAt || '', motivo_no_calculable: '', tar_anterior_normalizado_coste: old.normalized, tar_nuevo_normalizado_coste: newer.normalized, resultado_busqueda_tar_anterior: old.search, resultado_busqueda_tar_nuevo: newer.search, tar_anterior_tipo: old.tipo_tar || 'simple', tar_nuevo_tipo: newer.tipo_tar || 'simple', tar_anterior_componentes_detectados: detectedList(old), tar_nuevo_componentes_detectados: detectedList(newer), tar_anterior_componentes_no_encontrados: '', tar_nuevo_componentes_no_encontrados: '', tar_anterior_componentes_resueltos: resolvedList(old), tar_nuevo_componentes_resueltos: resolvedList(newer), tar_anterior_componentes_canonicos: old?.componentes_canonicos || '', tar_nuevo_componentes_canonicos: newer?.componentes_canonicos || '', tar_anterior_metodo_match: old?.match_method || old?.search || '', tar_nuevo_metodo_match: newer?.match_method || newer?.search || '', alias_aplicados: [aliasList(old), aliasList(newer)].filter(Boolean).join(', '), tar_anterior_desglose_costes: costBreakdown(old), tar_nuevo_desglose_costes: costBreakdown(newer), tar_nuevo_original_calculo: newAlias?.originalValue || String(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original || '').trim(), tar_nuevo_usado_calculo: newAlias?.resolvedValue || String(record.tar_nuevo_normalizado || record.tar_nuevo || record.tar_nuevo_original || '').trim(), alias_contextual_aplicado: newAlias?.aliasApplied ? 'si' : 'no', alias_contextual_regla: newAlias?.ruleId || newAlias?.attemptedAliasRuleId || '', alias_contextual_motivo: newAlias?.aliasApplied ? 'RPV como TAR nuevo desde 2024 interpretado como CAB/RPV LA' : (newAlias?.attemptedAliasReason || '') }; }
   function enrichRecords(records, state) { return (records || []).map((r) => ({ ...r, impacto_coste: calculate(r, state) })); }
   function publicCostColumns(record, state) { const c = record.impacto_coste || calculate(record, state || {}); return { coste_anual_tar_anterior_eur: c.coste_anual_tar_anterior_eur, coste_anual_tar_nuevo_eur: c.coste_anual_tar_nuevo_eur, diferencia_anual_eur: c.diferencia_anual_eur, impacto_economico: c.impacto_economico, coste_calculable: c.coste_calculable, version_catalogo_costes: c.version_catalogo_costes, fecha_importacion_catalogo_costes: c.fecha_importacion_catalogo_costes, tar_anterior_tipo: c.tar_anterior_tipo || 'simple', tar_nuevo_tipo: c.tar_nuevo_tipo || 'simple', tar_anterior_componentes_detectados: c.tar_anterior_componentes_detectados || '', tar_nuevo_componentes_detectados: c.tar_nuevo_componentes_detectados || '', tar_anterior_componentes_no_encontrados: c.tar_anterior_componentes_no_encontrados || '', tar_nuevo_componentes_no_encontrados: c.tar_nuevo_componentes_no_encontrados || '', tar_anterior_desglose_costes: c.tar_anterior_desglose_costes || '', tar_anterior_componentes_resueltos: c.tar_anterior_componentes_resueltos || '', tar_anterior_componentes_canonicos: c.tar_anterior_componentes_canonicos || '', tar_anterior_metodo_match: c.tar_anterior_metodo_match || '', tar_nuevo_desglose_costes: c.tar_nuevo_desglose_costes || '', tar_nuevo_componentes_resueltos: c.tar_nuevo_componentes_resueltos || '', tar_nuevo_componentes_canonicos: c.tar_nuevo_componentes_canonicos || '', tar_nuevo_metodo_match: c.tar_nuevo_metodo_match || '', tar_anterior_original: record.tar_antiguo_original || record.tar_antiguo || '', tar_anterior_usado_calculo: c.tar_anterior_componentes_resueltos || c.tar_anterior_normalizado_coste || '', tar_nuevo_original: c.tar_nuevo_original_calculo || '', tar_nuevo_usado_calculo: c.tar_nuevo_usado_calculo || '', alias_aplicados: c.alias_aplicados || '', componentes_no_encontrados: [c.tar_anterior_componentes_no_encontrados, c.tar_nuevo_componentes_no_encontrados].filter(Boolean).join(', '), alias_contextual_aplicado: c.alias_contextual_aplicado || 'no', alias_contextual_regla: c.alias_contextual_regla || '', alias_contextual_motivo: c.alias_contextual_motivo || '' }; }
-  window.CambiosCosts = { COLUMNS, ALIAS_COLUMNS, NOTE, BUILTIN_ALIASES, normalize, normalizeTarText, extractComponentsFromBrandText, canonicalizeCombination, compactKey, parseTarComponents, validateAliases, findCost, resolveContextualTarAlias, euro, loadState, saveState, templateXLSX, validateRows, importRows, clearActiveCatalog, exportActiveCatalog, isCurrent, calculate, enrichRecords, publicCostColumns };
+  window.CambiosCosts = { COLUMNS, ALIAS_COLUMNS, NOTE, BUILTIN_ALIASES, ALIASES, normalize, normalizeTarToken, normalizeComponents, normalizeTarText, extractComponentsFromBrandText, canonicalizeCombination, compactKey, parseTarComponents, validateAliases, findCost, resolveTarCost, resolveContextualTarAlias, euro, loadState, saveState, templateXLSX, validateRows, importRows, clearActiveCatalog, exportActiveCatalog, isCurrent, calculate, enrichRecords, publicCostColumns };
 }());
 
 
