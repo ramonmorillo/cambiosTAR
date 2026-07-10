@@ -1,5 +1,12 @@
 (function () {
-  const state = { records: [], filtered: [], costState: null, costValidation: null, patientIdMap: [], selectedExcelFile: null, excelWorkbook: null, excelSheets: [], excelHeaders: [], excelRows: [], importValidated: [], importDuplicatesOmitted: 0, lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
+  const state = { records: [], filtered: [], costState: null, costStateLoaded: false, costValidation: null, patientIdMap: [], selectedExcelFile: null, excelWorkbook: null, excelSheets: [], excelHeaders: [], excelRows: [], importValidated: [], importDuplicatesOmitted: 0, lastReport: null, tarBuilders: { old: { medicamentos: [], autoPauta: '' }, new: { medicamentos: [], autoPauta: '' } } };
+  const DEV_PERF = ['localhost', '127.0.0.1'].includes(location.hostname) || localStorage.getItem('cambiosTAR_perf') === 'true';
+  const timeStart = (label) => { if (DEV_PERF) console.time(label); };
+  const timeEnd = (label) => { if (DEV_PERF) console.timeEnd(label); };
+  const debounce = (fn, wait = 400) => { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); }; };
+  const TABLE_PAGE_SIZE = 50;
+  const costCalcCache = new Map();
+  const cimaSearchTokens = { old: 0, new: 0 };
   const $ = (id) => document.getElementById(id);
 
   function toast(message, type = 'ok') {
@@ -540,16 +547,35 @@
     location.hash = id;
     $('top-nav')?.classList.remove('open');
     if (id === 'dashboard') window.CambiosCharts.renderCharts(state.records);
-    if (id === 'costes') window.CambiosCostsUI?.render(state.records, state.costState);
+    if (id === 'costes') renderCostsWhenNeeded();
   }
 
   async function refresh() {
+    timeStart('initial-load');
     state.patientIdMap = loadPatientIdMap();
-    state.costState = window.CambiosCosts ? await window.CambiosCosts.loadState() : null;
-    window.CambiosCostsState = state.costState || {};
     state.records = sortByDate((await window.CambiosStorage.getAllRecords()).map((r) => window.CambiosIO.deriveRecord({ ...r, patient_id: r.patient_id, tar_antiguo: r.tar_antiguo_original || r.tar_antiguo, tar_nuevo: r.tar_nuevo_original || r.tar_nuevo, tar_antiguo_medicamentos: r.tar_antiguo_medicamentos, tar_nuevo_medicamentos: r.tar_nuevo_medicamentos, tar_antiguo_normalizado: r.tar_antiguo_normalizado, tar_nuevo_normalizado: r.tar_nuevo_normalizado, tar_antiguo_normalizacion_manual: r.tar_antiguo_normalizacion_manual, tar_nuevo_normalizacion_manual: r.tar_nuevo_normalizacion_manual, motivo_original: r.motivo_original, motivo_normalizado: r.motivo_normalizado, motivo_detalle: r.motivo_detalle, origen: r.origen, id: r.id, fecha_creacion: r.fecha_creacion, original_patient_code: getRecordLocalCode(r) })));
     rebuildPatientIdMapFromRecords();
-    applyFilters(); renderDashboard(); renderPatientOptions(); window.CambiosCostsUI?.render(state.records, state.costState);
+    costCalcCache.clear();
+    await applyFilters();
+    if (document.querySelector('#dashboard.active')) renderDashboard();
+    if (document.querySelector('#paciente.active')) renderPatientOptions();
+    if (document.querySelector('#costes.active')) await renderCostsWhenNeeded();
+    timeEnd('initial-load');
+  }
+
+  async function ensureCostStateLoaded() {
+    if (state.costStateLoaded || !window.CambiosCosts) return state.costState;
+    timeStart('calculate-cost');
+    state.costState = await window.CambiosCosts.loadState();
+    state.costStateLoaded = true;
+    window.CambiosCostsState = state.costState || {};
+    timeEnd('calculate-cost');
+    return state.costState;
+  }
+
+  async function renderCostsWhenNeeded() {
+    await ensureCostStateLoaded();
+    window.CambiosCostsUI?.render(state.records, state.costState);
   }
 
   function validInputRecord(data) {
@@ -629,7 +655,9 @@
     const builder = state.tarBuilders[kind];
     const prefix = kind === 'old' ? 'old' : 'new';
     const label = kind === 'old' ? 'TAR antiguo' : 'TAR nuevo';
+    timeStart('normalize-regimen');
     const normalized = window.CambiosNormalize.normalizarPautaTAR(builder.medicamentos);
+    timeEnd('normalize-regimen');
     builder.autoPauta = normalized.pauta || '';
     const manualInput = $(`${prefix}-normalized-manual`);
     if (manualInput && !manualInput.dataset.manualEdited) manualInput.value = builder.autoPauta;
@@ -673,9 +701,15 @@
     const message = $(`${prefix}-cima-message`);
     const resultsEl = $(`${prefix}-cima-results`);
     const queryEl = $(`${prefix}-cima-query`);
+    const query = queryEl?.value || '';
+    if (query.trim().length < 3) { if (message) message.textContent = 'Escriba al menos 3 caracteres para buscar en CIMA.'; if (resultsEl) resultsEl.innerHTML = ''; return; }
     if (message) message.textContent = 'Consultando CIMA/AEMPS…';
     if (resultsEl) resultsEl.innerHTML = '';
-    const result = await window.CambiosNormalize.buscarMedicamentoCIMA(queryEl?.value || '');
+    const token = ++cimaSearchTokens[kind];
+    timeStart('search-medicines');
+    const result = await window.CambiosNormalize.buscarMedicamentoCIMA(query);
+    timeEnd('search-medicines');
+    if (token !== cimaSearchTokens[kind]) return;
     if (message) message.textContent = result.message;
     if (!result.results.length) {
       $(`${prefix}-manual-panel`)?.classList.remove('hidden');
@@ -714,6 +748,7 @@
     fillSelect('filter-reason', window.CambiosNormalize.MOTIVOS);
   }
   async function applyFilters() {
+    timeStart('filter-records');
     updateFilterOptions();
     if (!$('records-table')) return;
     const from = $('filter-from')?.value || '', to = $('filter-to')?.value || '', year = $('filter-year')?.value || '', month = $('filter-month')?.value || '', reason = $('filter-reason')?.value || '';
@@ -721,12 +756,23 @@
     const patientIds = await resolvePatientSearchTermToIds(patient);
     state.filtered = state.records.filter((r) => (!from || r.fecha >= from) && (!to || r.fecha <= to) && (!year || String(r.anio) === year) && (!month || String(r.mes) === month) && (!reason || r.motivo_normalizado === reason) && (!old || normalizedOld(r).toLowerCase().includes(old) || (r.tar_antiguo_original || '').toLowerCase().includes(old)) && (!newer || normalizedNew(r).toLowerCase().includes(newer) || (r.tar_nuevo_original || '').toLowerCase().includes(newer)) && (!origin || r.origen === origin) && (!patient || patientIds.includes(normalizePatientId(r.patient_id))) && (!review || (r.estado_revision || (isPendingReview(r) ? 'pendiente' : 'ok')) === review));
     renderRecordsTable();
+    timeEnd('filter-records');
+  }
+
+  function recordCostSummary(r) {
+    if (!state.costStateLoaded || !window.CambiosCosts?.calculate) return '';
+    const key = [r.id, r.fecha, normalizedOld(r), normalizedNew(r), state.costState?.activeBatchId || ''].join('|');
+    let c = costCalcCache.get(key);
+    if (!c) { c = window.CambiosCosts.calculate(r, state.costState || {}); costCalcCache.set(key, c); }
+    return c ? `${escapeHtml(c.impacto_economico)} · ${c.coste_calculable === 'si' ? window.CambiosCosts.euro(c.diferencia_anual_eur) : 'no calculable'}<br><small>${escapeHtml(window.CambiosCosts.NOTE)}</small>` : '';
   }
 
   function renderRecordsTable() {
     const rows = state.filtered;
     if (!$('records-table')) return;
-    $('records-table').innerHTML = `<p class="small"><strong>${rows.length}</strong> registros mostrados de ${state.records.length}. ${state.records.filter(isPendingReview).length} pendientes de revisar.</p><table><thead><tr><th>Fecha</th><th>Patient ID</th><th>TAR antiguo original</th><th>TAR antiguo normalizado</th><th>TAR nuevo original</th><th>TAR nuevo normalizado</th><th>Transición normalizada</th><th>Motivo</th><th>Detalle</th><th>Estado</th><th>Origen</th><th>Impacto económico anual estimado</th><th>Acciones</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.fecha}</td><td>${escapeHtml(r.patient_id)}</td><td>${escapeHtml(r.tar_antiguo_original || r.tar_antiguo)}</td><td>${escapeHtml(normalizedOld(r))}</td><td>${escapeHtml(r.tar_nuevo_original || r.tar_nuevo)}</td><td>${escapeHtml(normalizedNew(r))}</td><td>${escapeHtml(normalizedTransition(r))}</td><td>${escapeHtml(r.motivo_normalizado)}</td><td>${escapeHtml(r.motivo_detalle || '')}</td><td>${isPendingReview(r) ? '<span class="badge warning">Pendiente</span>' : '<span class="badge ok">OK</span>'}</td><td>${escapeHtml(r.origen)}</td><td>${(() => { const c = window.CambiosCosts?.calculate ? window.CambiosCosts.calculate(r, state.costState || {}) : null; return c ? `${escapeHtml(c.impacto_economico)} · ${c.coste_calculable === 'si' ? window.CambiosCosts.euro(c.diferencia_anual_eur) : 'no calculable'}<br><small>${escapeHtml(window.CambiosCosts.NOTE)}</small>` : ''; })()}</td><td><button class="link-btn" data-edit="${r.id}">Editar</button><button class="link-btn danger-text" data-delete="${r.id}">Eliminar</button></td></tr>`).join('') || '<tr><td colspan="13">Sin registros.</td></tr>'}</tbody></table>`;
+    const visibleRows = rows.slice(0, TABLE_PAGE_SIZE);
+    const limited = rows.length > visibleRows.length ? ` Se muestran los primeros ${visibleRows.length}; refine filtros para ver menos filas o exporte el resultado completo.` : '';
+    $('records-table').innerHTML = `<p class="small"><strong>${rows.length}</strong> registros filtrados de ${state.records.length}. ${state.records.filter(isPendingReview).length} pendientes de revisar.${limited}</p><table><thead><tr><th>Fecha</th><th>Patient ID</th><th>TAR antiguo original</th><th>TAR antiguo normalizado</th><th>TAR nuevo original</th><th>TAR nuevo normalizado</th><th>Transición normalizada</th><th>Motivo</th><th>Detalle</th><th>Estado</th><th>Origen</th><th>Impacto económico anual estimado</th><th>Acciones</th></tr></thead><tbody>${visibleRows.map((r) => `<tr><td>${r.fecha}</td><td>${escapeHtml(r.patient_id)}</td><td>${escapeHtml(r.tar_antiguo_original || r.tar_antiguo)}</td><td>${escapeHtml(normalizedOld(r))}</td><td>${escapeHtml(r.tar_nuevo_original || r.tar_nuevo)}</td><td>${escapeHtml(normalizedNew(r))}</td><td>${escapeHtml(normalizedTransition(r))}</td><td>${escapeHtml(r.motivo_normalizado)}</td><td>${escapeHtml(r.motivo_detalle || '')}</td><td>${isPendingReview(r) ? '<span class="badge warning">Pendiente</span>' : '<span class="badge ok">OK</span>'}</td><td>${escapeHtml(r.origen)}</td><td>${recordCostSummary(r)}</td><td><button class="link-btn" data-edit="${r.id}">Editar</button><button class="link-btn danger-text" data-delete="${r.id}">Eliminar</button></td></tr>`).join('') || '<tr><td colspan="13">Sin registros.</td></tr>'}</tbody></table>`;
   }
 
   async function editRecord(id) {
@@ -994,7 +1040,9 @@
     window.addEventListener('pseudonymization-key-changed', () => updateSecurityState());
     on('record-form', 'reset', () => setTimeout(() => { resetTarBuilders(); toggleReasonDetail(); }, 0));
     ['old', 'new'].forEach((kind) => {
+      const debouncedCimaSearch = debounce(() => searchCimaFor(kind), 400);
       on(`${kind}-cima-search`, 'click', () => searchCimaFor(kind));
+      on(`${kind}-cima-query`, 'input', debouncedCimaSearch);
       on(`${kind}-manual-toggle`, 'click', () => $(`${kind}-manual-panel`)?.classList.toggle('hidden'));
       on(`${kind}-manual-add`, 'click', () => {
         try {
@@ -1054,7 +1102,8 @@
     });
     on('validate-excel-btn', 'click', validateExcel);
     on('import-valid-btn', 'click', importValidated);
-    ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient', 'filter-review'].forEach((id) => on(id, 'input', applyFilters));
+    const debouncedApplyFilters = debounce(applyFilters, 350);
+    ['filter-from', 'filter-to', 'filter-year', 'filter-month', 'filter-reason', 'filter-old', 'filter-new', 'filter-origin', 'filter-patient', 'filter-review'].forEach((id) => on(id, 'input', debouncedApplyFilters));
     on('clear-filters-btn', 'click', () => { document.querySelectorAll('.filters input,.filters select').forEach((el) => { el.value = ''; }); applyFilters(); });
     on('records-table', 'click', (e) => { if (e.target.dataset.edit) editRecord(e.target.dataset.edit); if (e.target.dataset.delete) deleteRecord(e.target.dataset.delete); });
     on('export-filtered-xlsx', 'click', () => window.CambiosIO.exportXLSX(state.filtered, 'cambiosTAR_filtrado.xlsx'));
@@ -1081,12 +1130,13 @@
     on('download-template-btn', 'click', window.CambiosIO.templateXLSX);
     on('download-cost-template-btn', 'click', () => window.CambiosCosts.templateXLSX());
     on('cost-excel-file', 'change', (e) => { state.selectedCostFile = e.target.files[0] || null; state.costValidation = null; if ($('validate-cost-excel-btn')) $('validate-cost-excel-btn').disabled = !state.selectedCostFile; if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = true; if ($('cost-validation-summary')) $('cost-validation-summary').innerHTML = state.selectedCostFile ? `<div class="alert info">Archivo seleccionado: <strong>${escapeHtml(state.selectedCostFile.name)}</strong>. Pulse “Validar catálogo”.</div>` : ''; if ($('cost-validation-errors')) $('cost-validation-errors').innerHTML = ''; });
-    on('validate-cost-excel-btn', 'click', async () => { try { if (!state.selectedCostFile) throw new Error('Seleccione un Excel de costes.'); state.costValidation = await window.CambiosCostsUI.readAndValidate(state.selectedCostFile); const errors = state.costValidation.errors || []; const warnings = state.costValidation.warnings || []; if (errors.length) { await window.CambiosCosts.importRows(await window.CambiosIO.readExcel(state.selectedCostFile), state.selectedCostFile.name); state.costState = await window.CambiosCosts.loadState(); } else { state.costState = { ...(state.costState || {}), lastValidationStatus: 'success_preview', lastValidationFilename: state.selectedCostFile.name, lastValidationErrors: [] }; } if ($('cost-validation-summary')) $('cost-validation-summary').innerHTML = `<div class="alert ${errors.length ? 'warning' : 'info'}">${errors.length ? `Se detectaron ${errors.length} errores críticos. No se actualizará el catálogo activo.` : `Catálogo válido: ${state.costValidation.rows.length} filas listas para importar. Catálogo validado pendiente de guardar.`}</div>${warnings.length ? `<div class="alert warning">${warnings.length} advertencia(s): revise filas de ejemplo u observaciones antes de confirmar.</div>` : ''}`; const issueRows = [...errors, ...warnings]; if ($('cost-validation-errors')) $('cost-validation-errors').innerHTML = issueRows.length ? `<table><thead><tr><th>Fila</th><th>Campo</th><th>Valor recibido</th><th>Motivo</th><th>Sugerencia</th></tr></thead><tbody>${issueRows.map((e) => `<tr><td>${escapeHtml(e.fila)}</td><td>${escapeHtml(e.campo)}</td><td>${escapeHtml(e.valor_recibido)}</td><td>${escapeHtml(e.motivo)}</td><td>${escapeHtml(e.sugerencia)}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Sin errores críticos.</p>'; if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = errors.length > 0; window.CambiosCostsUI.render(state.records, state.costState); } catch (error) { if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = true; toast(error.message || 'Error leyendo el Excel de costes.', 'error'); } });
-    on('import-cost-catalog-btn', 'click', async () => { try { if (!state.selectedCostFile || !state.costValidation?.valid) throw new Error('Valide correctamente el Excel de costes antes de reemplazar el catálogo.'); const ok = window.confirm('Esta acción sustituirá el catálogo de costes activo por el nuevo archivo validado. Los registros clínicos no se modificarán. Los cálculos económicos se recalcularán usando el nuevo catálogo según la fecha de cada cambio TAR.'); if (!ok) return; const result = await window.CambiosCosts.importRows(state.costValidation.rows, state.selectedCostFile.name, state.costValidation.aliases || []); if (!result.valid) throw new Error('El catálogo contiene errores críticos.'); toast('Catálogo activo cargado correctamente. El dashboard económico se ha recalculado.'); state.costState = await window.CambiosCosts.loadState(); window.CambiosCostsUI.render(state.records, state.costState); if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = true; } catch (error) { toast(error.message || 'No se pudo importar el catálogo.', 'error'); } });
+    on('validate-cost-excel-btn', 'click', async () => { try { if (!state.selectedCostFile) throw new Error('Seleccione un Excel de costes.'); state.costValidation = await window.CambiosCostsUI.readAndValidate(state.selectedCostFile); const errors = state.costValidation.errors || []; const warnings = state.costValidation.warnings || []; if (errors.length) { await window.CambiosCosts.importRows(await window.CambiosIO.readExcel(state.selectedCostFile), state.selectedCostFile.name); state.costState = await window.CambiosCosts.loadState(); state.costStateLoaded = true; } else { state.costState = { ...(state.costState || {}), lastValidationStatus: 'success_preview', lastValidationFilename: state.selectedCostFile.name, lastValidationErrors: [] }; } if ($('cost-validation-summary')) $('cost-validation-summary').innerHTML = `<div class="alert ${errors.length ? 'warning' : 'info'}">${errors.length ? `Se detectaron ${errors.length} errores críticos. No se actualizará el catálogo activo.` : `Catálogo válido: ${state.costValidation.rows.length} filas listas para importar. Catálogo validado pendiente de guardar.`}</div>${warnings.length ? `<div class="alert warning">${warnings.length} advertencia(s): revise filas de ejemplo u observaciones antes de confirmar.</div>` : ''}`; const issueRows = [...errors, ...warnings]; if ($('cost-validation-errors')) $('cost-validation-errors').innerHTML = issueRows.length ? `<table><thead><tr><th>Fila</th><th>Campo</th><th>Valor recibido</th><th>Motivo</th><th>Sugerencia</th></tr></thead><tbody>${issueRows.map((e) => `<tr><td>${escapeHtml(e.fila)}</td><td>${escapeHtml(e.campo)}</td><td>${escapeHtml(e.valor_recibido)}</td><td>${escapeHtml(e.motivo)}</td><td>${escapeHtml(e.sugerencia)}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Sin errores críticos.</p>'; if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = errors.length > 0; renderCostsWhenNeeded(); } catch (error) { if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = true; toast(error.message || 'Error leyendo el Excel de costes.', 'error'); } });
+    on('import-cost-catalog-btn', 'click', async () => { try { if (!state.selectedCostFile || !state.costValidation?.valid) throw new Error('Valide correctamente el Excel de costes antes de reemplazar el catálogo.'); const ok = window.confirm('Esta acción sustituirá el catálogo de costes activo por el nuevo archivo validado. Los registros clínicos no se modificarán. Los cálculos económicos se recalcularán usando el nuevo catálogo según la fecha de cada cambio TAR.'); if (!ok) return; const result = await window.CambiosCosts.importRows(state.costValidation.rows, state.selectedCostFile.name, state.costValidation.aliases || []); if (!result.valid) throw new Error('El catálogo contiene errores críticos.'); toast('Catálogo activo cargado correctamente. El dashboard económico se ha recalculado.'); state.costState = await window.CambiosCosts.loadState(); state.costStateLoaded = true; renderCostsWhenNeeded(); if ($('import-cost-catalog-btn')) $('import-cost-catalog-btn').disabled = true; } catch (error) { toast(error.message || 'No se pudo importar el catálogo.', 'error'); } });
     on('download-active-cost-catalog-btn', 'click', () => window.CambiosCosts.exportActiveCatalog(state.costState || {}));
-    on('delete-active-cost-catalog-btn', 'click', async () => { try { const ok = window.confirm('Va a eliminar el catálogo de costes activo. Los registros clínicos de cambios TAR no se eliminarán. El impacto económico pasará a mostrarse como no calculable hasta que cargue un nuevo catálogo válido.'); if (!ok) return; state.costState = await window.CambiosCosts.clearActiveCatalog(); window.CambiosCostsUI.render(state.records, state.costState); toast('Catálogo activo eliminado. El impacto económico queda como no calculable hasta cargar un nuevo catálogo válido.', 'info'); } catch (error) { toast(error.message || 'No se pudo eliminar el catálogo activo.', 'error'); } });
-    ['cost-filter-from','cost-filter-to','cost-filter-year','cost-filter-month','cost-filter-reason','cost-filter-old','cost-filter-new','cost-filter-type','catalog-filter-text','catalog-filter-status'].forEach((id) => on(id, 'input', () => window.CambiosCostsUI?.render(state.records, state.costState)));
-    on('clear-cost-filters-btn', 'click', () => { document.querySelectorAll('#costes .filters input,#costes .filters select').forEach((el) => { el.value = ''; }); window.CambiosCostsUI?.render(state.records, state.costState); });
+    on('delete-active-cost-catalog-btn', 'click', async () => { try { const ok = window.confirm('Va a eliminar el catálogo de costes activo. Los registros clínicos de cambios TAR no se eliminarán. El impacto económico pasará a mostrarse como no calculable hasta que cargue un nuevo catálogo válido.'); if (!ok) return; state.costState = await window.CambiosCosts.clearActiveCatalog(); renderCostsWhenNeeded(); toast('Catálogo activo eliminado. El impacto económico queda como no calculable hasta cargar un nuevo catálogo válido.', 'info'); } catch (error) { toast(error.message || 'No se pudo eliminar el catálogo activo.', 'error'); } });
+    const debouncedRenderCosts = debounce(() => renderCostsWhenNeeded(), 350);
+    ['cost-filter-from','cost-filter-to','cost-filter-year','cost-filter-month','cost-filter-reason','cost-filter-old','cost-filter-new','cost-filter-type','catalog-filter-text','catalog-filter-status'].forEach((id) => on(id, 'input', debouncedRenderCosts));
+    on('clear-cost-filters-btn', 'click', () => { document.querySelectorAll('#costes .filters input,#costes .filters select').forEach((el) => { el.value = ''; }); renderCostsWhenNeeded(); });
     on('export-cost-pdf', 'click', () => { try { window.CambiosCostsUI.exportPdf?.(); } catch (error) { toast(error.message || 'No se pudo generar el PDF económico.', 'error'); } });
     on('export-cost-impact-xlsx', 'click', () => window.CambiosCostsUI.exportRows(window.CambiosEconomicRows?.impact || [], 'impacto_economico_por_cambio.xlsx'));
     on('export-cost-monthly-xlsx', 'click', () => window.CambiosCostsUI.exportRows(window.CambiosEconomicRows?.monthly || [], 'resumen_economico_mensual.xlsx'));
