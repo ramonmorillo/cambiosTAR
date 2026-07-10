@@ -3,11 +3,12 @@
   const LEGACY_CUSTOM_KEY = 'cambiosTAR_custom_tar_dictionary';
   const CIMA_ENABLED_KEY = 'cambiosTAR_cima_enabled';
   const MOTIVOS = ['Fracaso viral', 'Efectos secundarios', 'Optimización', 'Interacciones', 'Otros'];
+  const cimaSearchCache = new Map();
 
   const BASE_TAR = [
-    { nombre_mostrado: 'BIC/FTC/TAF (Biktarvy)', pauta_normalizada: 'BIC/FTC/TAF', componentes: ['BIC', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Biktarvy', 'bictegravir', 'emtricitabina', 'tenofovir alafenamida', 'bictegravir/emtricitabina/tenofovir alafenamida'] },
-    { nombre_mostrado: 'DTG/3TC (Dovato)', pauta_normalizada: 'DTG/3TC', componentes: ['DTG', '3TC'], tipo: 'Combinación', sinonimos: ['Dovato', 'dolutegravir', 'lamivudina', 'dolutegravir/lamivudina'] },
-    { nombre_mostrado: 'DTG/ABC/3TC (Triumeq)', pauta_normalizada: 'DTG/ABC/3TC', componentes: ['DTG', 'ABC', '3TC'], tipo: 'Combinación', sinonimos: ['Triumeq', 'dolutegravir/abacavir/lamivudina', 'abacavir'] },
+    { nombre_mostrado: 'BIC/FTC/TAF (Biktarvy)', pauta_normalizada: 'BIC/FTC/TAF', componentes: ['BIC', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Biktarvy', 'bictegravir/emtricitabina/tenofovir alafenamida'] },
+    { nombre_mostrado: 'DTG/3TC (Dovato)', pauta_normalizada: 'DTG/3TC', componentes: ['DTG', '3TC'], tipo: 'Combinación', sinonimos: ['Dovato', 'dolutegravir/lamivudina'] },
+    { nombre_mostrado: 'DTG/ABC/3TC (Triumeq)', pauta_normalizada: 'DTG/ABC/3TC', componentes: ['DTG', 'ABC', '3TC'], tipo: 'Combinación', sinonimos: ['Triumeq', 'dolutegravir/abacavir/lamivudina'] },
     { nombre_mostrado: 'EVG/COBI/FTC/TAF (Genvoya)', pauta_normalizada: 'EVG/COBI/FTC/TAF', componentes: ['EVG', 'COBI', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Genvoya', 'elvitegravir/cobicistat/emtricitabina/tenofovir alafenamida'] },
     { nombre_mostrado: 'EVG/COBI/FTC/TDF (Stribild)', pauta_normalizada: 'EVG/COBI/FTC/TDF', componentes: ['EVG', 'COBI', 'FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Stribild', 'elvitegravir/cobicistat/emtricitabina/tenofovir disoproxilo'] },
     { nombre_mostrado: 'DRV/COBI/FTC/TAF (Symtuza)', pauta_normalizada: 'DRV/COBI/FTC/TAF', componentes: ['DRV', 'COBI', 'FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Symtuza', 'darunavir/cobicistat/emtricitabina/tenofovir alafenamida'] },
@@ -20,19 +21,20 @@
     { nombre_mostrado: 'FTC/TAF (Descovy)', pauta_normalizada: 'FTC/TAF', componentes: ['FTC', 'TAF'], tipo: 'Combinación', sinonimos: ['Descovy', 'emtricitabina/tenofovir alafenamida'] },
     { nombre_mostrado: 'FTC/TDF (Truvada)', pauta_normalizada: 'FTC/TDF', componentes: ['FTC', 'TDF'], tipo: 'Combinación', sinonimos: ['Truvada', 'emtricitabina/tenofovir disoproxilo'] },
     { nombre_mostrado: 'DRV/r', pauta_normalizada: 'DRV/r', componentes: ['DRV', 'r'], tipo: 'Combinación', sinonimos: ['Prezista + Norvir', 'darunavir/ritonavir'] },
-    { nombre_mostrado: 'DRV/COBI (Rezolsta)', pauta_normalizada: 'DRV/COBI', componentes: ['DRV', 'COBI'], tipo: 'Combinación', sinonimos: ['Rezolsta', 'darunavir/cobicistat'] }
+    { nombre_mostrado: 'DRV/COBI (Rezolsta)', pauta_normalizada: 'DRV/COBI', componentes: ['DRV', 'COBI'], tipo: 'Combinación', sinonimos: ['Rezolsta', 'darunavir/cobicistat'] },
+    { nombre_mostrado: 'LPV/r (Kaletra)', pauta_normalizada: 'LPV/r', componentes: ['LPV', 'r'], tipo: 'Combinación', sinonimos: ['Kaletra', 'lopinavir/ritonavir'] }
   ];
 
   const SINGLE_EQUIVALENCES = [
     ['bictegravir', 'BIC'], ['emtricitabina', 'FTC'], ['tenofovir alafenamida', 'TAF'], ['tenofovir disoproxilo', 'TDF'], ['tenofovir disoproxil', 'TDF'],
     ['dolutegravir', 'DTG'], ['lamivudina', '3TC'], ['abacavir', 'ABC'], ['elvitegravir', 'EVG'], ['cobicistat', 'COBI'],
     ['darunavir', 'DRV'], ['ritonavir', 'r'], ['rilpivirina', 'RPV'], ['cabotegravir', 'CAB'], ['raltegravir', 'RAL'],
-    ['doravirina', 'DOR'], ['efavirenz', 'EFV'], ['nevirapina', 'NVP'], ['etravirina', 'ETR'], ['maraviroc', 'MVC'],
+    ['lopinavir', 'LPV'], ['doravirina', 'DOR'], ['efavirenz', 'EFV'], ['nevirapina', 'NVP'], ['etravirina', 'ETR'], ['maraviroc', 'MVC'],
     ['enfuvirtida', 'T20'], ['fostemsavir', 'FTR'], ['lenacapavir', 'LEN'], ['ibalizumab', 'IBA'],
-    ['tivicay', 'DTG'], ['prezista', 'DRV'], ['norvir', 'r'], ['isentress', 'RAL'], ['pifeltro', 'DOR'], ['vocabria', 'CAB'], ['rekambys', 'RPV']
+    ['tivicay', 'DTG'], ['prezista', 'DRV'], ['norvir', 'r'], ['tybost', 'COBI'], ['isentress', 'RAL'], ['pifeltro', 'DOR'], ['edurant', 'RPV'], ['kaletra', 'LPV/r'], ['vocabria', 'CAB'], ['rekambys', 'RPV']
   ];
   const COMBINATION_EQUIVALENCES = BASE_TAR.flatMap((entry) => [entry.nombre_mostrado, ...(entry.sinonimos || [])].map((name) => [name, entry.pauta_normalizada]));
-  const ORDER = ['BIC', 'DTG', 'CAB', 'RAL', 'EVG', 'DRV/r', 'DRV/COBI', 'DRV', 'COBI', 'r', 'DOR', 'RPV', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA', 'ABC', '3TC', 'FTC/TAF', 'FTC/TDF', 'FTC', 'TAF', 'TDF'];
+  const ORDER = ['FTC/TAF', 'FTC/TDF', 'BIC', 'DTG', 'CAB', 'RAL', 'EVG', 'DRV/r', 'DRV/COBI', 'LPV/r', 'DRV', 'COBI', 'r', 'DOR', 'RPV', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA', 'ABC', '3TC', 'FTC', 'TAF', 'TDF'];
 
   function normalizeText(value) {
     return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[+/_(),-]+/g, ' ').replace(/\s+/g, ' ');
@@ -102,7 +104,12 @@
     const candidates = [...COMBINATION_EQUIVALENCES, ...getCustomDictionary().flatMap((entry) => [entry.nombre_mostrado, ...(entry.sinonimos || [])].filter(Boolean).map((name) => [name, entry.pauta_normalizada]))];
     return Array.from(new Set(candidates.filter(([name]) => {
       const n = normalizeText(name);
-      return n && (q === n || q.includes(n) || n.includes(q));
+      if (!n) return false;
+      // Seguridad farmacológica: una combinación solo se reconoce cuando el
+      // medicamento seleccionado contiene el nombre comercial o la combinación
+      // exacta. No se infieren combos por coincidencias parciales de principios
+      // activos sueltos (p. ej. emtricitabina no implica BIC/FTC/TAF).
+      return q === n || q.includes(n);
     }).map(([, pauta]) => pauta)));
   }
 
@@ -116,7 +123,7 @@
     });
     tokenizePauta(text).forEach((token) => {
       const upper = token === 'r' ? 'r' : token.toUpperCase();
-      if (ORDER.includes(upper) || ['BIC', 'FTC', 'TAF', 'TDF', 'DTG', '3TC', 'ABC', 'EVG', 'COBI', 'DRV', 'RPV', 'CAB', 'RAL', 'DOR', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA'].includes(upper)) found.push(upper);
+      if (ORDER.includes(upper) || ['LPV', 'BIC', 'FTC', 'TAF', 'TDF', 'DTG', '3TC', 'ABC', 'EVG', 'COBI', 'DRV', 'RPV', 'CAB', 'RAL', 'DOR', 'EFV', 'NVP', 'ETR', 'MVC', 'T20', 'FTR', 'LEN', 'IBA'].includes(upper)) found.push(upper);
     });
     return found;
   }
@@ -131,64 +138,45 @@
     return groups.sort((a, b) => rank(a) - rank(b)).map((group) => group.join('/'));
   }
 
-  function normalizarPautaTAR(medicamentosSeleccionados) {
+  function normalizeDrugToComponents(drug) {
+    const med = (typeof drug === 'string') ? { nombre: drug } : (drug || {});
+    const text = [med.nombre, med.principio_activo, med.pauta].filter(Boolean).join(' ');
+    const combinations = findCombinations(text);
+    if (combinations.length) {
+      const comboItems = combinations.map((combination) => ({ components: Array.from(new Set(tokenizePauta(combination))), pauta: combination, source: 'combination_exact' }));
+      return comboItems.filter((item) => !comboItems.some((other) => other !== item && item.components.every((component) => other.components.includes(component))));
+    }
+    const components = Array.from(new Set(findSingleComponents(text)));
+    return components.length ? [{ components, pauta: components.join('/'), source: 'single_components' }] : [];
+  }
+
+  function buildNormalizedRegimen(medicamentosSeleccionados) {
     const meds = Array.isArray(medicamentosSeleccionados) ? medicamentosSeleccionados : [];
     const groups = [];
     const matches = [];
     const unmatched = [];
-    const combinedText = meds.map((m) => [m.nombre, m.principio_activo, m.pauta].filter(Boolean).join(' ')).join(' ');
-    const hasVocabria = /vocabria|cabotegravir/i.test(combinedText);
-    const hasRekambys = /rekambys|rilpivirina/i.test(combinedText);
-
     meds.forEach((med) => {
-      const text = [med.nombre, med.principio_activo, med.pauta].filter(Boolean).join(' ');
-      const combinations = findCombinations(text);
-      const components = findSingleComponents(text);
-      combinations.forEach((combination) => {
-        groups.push(Array.from(new Set(tokenizePauta(combination))));
-        matches.push({ nombre_mostrado: med.nombre || med.principio_activo || combination, pauta_normalizada: combination });
+      const text = [med?.nombre, med?.principio_activo, med?.pauta].filter(Boolean).join(' ');
+      const normalized = normalizeDrugToComponents(med);
+      normalized.forEach((item) => {
+        groups.push(item.components);
+        matches.push({ nombre_mostrado: med?.nombre || med?.principio_activo || item.pauta, pauta_normalizada: item.pauta, origen_regla: item.source, componentes: item.components });
       });
-      if (components.length) {
-        groups.push(Array.from(new Set(components)));
-        matches.push({ nombre_mostrado: med.nombre || med.principio_activo || components.join('/'), pauta_normalizada: components.join('/') });
-      }
-      if (!combinations.length && !components.length && String(text).trim()) unmatched.push(text);
+      if (!normalized.length && String(text).trim()) unmatched.push(text);
     });
-
-    if (hasVocabria && hasRekambys) return { pauta: 'CAB/RPV LA', reconocido: unmatched.length === 0, advertencia: unmatched.length > 0, noReconocidos: unmatched, matches };
-
-    const flat = Array.from(new Set(groups.flat()));
-    if (flat.includes('DRV') && flat.includes('r')) {
-      groups.push(['DRV', 'r']);
-      flat.splice(flat.indexOf('DRV'), 1);
-      flat.splice(flat.indexOf('r'), 1);
-    } else if (flat.includes('DRV') && flat.includes('COBI')) {
-      groups.push(['DRV', 'COBI']);
-      flat.splice(flat.indexOf('DRV'), 1);
-      flat.splice(flat.indexOf('COBI'), 1);
-    }
-    if (flat.includes('FTC') && flat.includes('TAF')) {
-      groups.push(['FTC', 'TAF']); flat.splice(flat.indexOf('FTC'), 1); flat.splice(flat.indexOf('TAF'), 1);
-    } else if (flat.includes('FTC') && flat.includes('TDF')) {
-      groups.push(['FTC', 'TDF']); flat.splice(flat.indexOf('FTC'), 1); flat.splice(flat.indexOf('TDF'), 1);
-    }
-
-    const finalGroups = [];
-    groups.forEach((group) => {
-      const key = group.join('/');
-      if (key === 'DRV/r' || key === 'DRV/COBI' || key === 'FTC/TAF' || key === 'FTC/TDF' || group.length > 1) finalGroups.push(group);
-    });
-    flat.forEach((code) => finalGroups.push([code]));
     const seen = new Set();
-    const deduped = finalGroups.filter((group) => {
+    const deduped = groups.filter((group) => {
       const key = group.join('/');
-      if (seen.has(key) || group.every((component) => seen.has(component))) return false;
-      group.forEach((component) => seen.add(component));
+      if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
     const pauta = orderGroups(deduped).join(' + ');
     return { pauta, reconocido: Boolean(pauta) && unmatched.length === 0, advertencia: !pauta || unmatched.length > 0, noReconocidos: unmatched, matches };
+  }
+
+  function normalizarPautaTAR(medicamentosSeleccionados) {
+    return buildNormalizedRegimen(medicamentosSeleccionados);
   }
 
   function addCustomTarEntry({ texto_introducido, pauta_normalizada, componentes, tipo, sinonimos }) {
@@ -245,12 +233,16 @@
   async function buscarMedicamentoCIMA(text) {
     const query = String(text || '').trim();
     if (query.length < 3) return { results: [], message: 'Escriba al menos 3 caracteres para buscar en CIMA.' };
+    const cacheKey = normalizeText(query);
+    if (cimaSearchCache.has(cacheKey)) return cimaSearchCache.get(cacheKey);
     try {
       const response = await fetch(`https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(query)}&pagina=1`, { method: 'GET' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const items = Array.isArray(data.resultados) ? data.resultados : (Array.isArray(data) ? data : []);
-      return { results: items.slice(0, 10).map(mapCimaItem).filter((item) => item.nombre || item.principio_activo), message: 'Resultados CIMA recibidos. Seleccione uno o use entrada manual si no aparece.' };
+      const result = { results: items.slice(0, 10).map(mapCimaItem).filter((item) => item.nombre || item.principio_activo), message: 'Resultados CIMA recibidos. Seleccione uno o use entrada manual si no aparece.' };
+      cimaSearchCache.set(cacheKey, result);
+      return result;
     } catch (error) {
       return { results: [], message: 'No se ha podido consultar CIMA. Puede introducir el medicamento manualmente.', error: error.message };
     }
@@ -258,5 +250,5 @@
 
   const searchCIMA = buscarMedicamentoCIMA;
 
-  window.CambiosNormalize = { MOTIVOS, BASE_TAR, normalizeText, allTarEntries, normalizeTar, normalizarPautaTAR, getCustomDictionary, saveCustomDictionary, addCustomTarEntry, classifyReason, isCimaEnabled, setCimaEnabled, buscarMedicamentoCIMA, searchCIMA, clearLocalNormalizationConfig };
+  window.CambiosNormalize = { MOTIVOS, BASE_TAR, normalizeText, allTarEntries, normalizeTar, normalizarPautaTAR, normalizeDrugToComponents, buildNormalizedRegimen, getCustomDictionary, saveCustomDictionary, addCustomTarEntry, classifyReason, isCimaEnabled, setCimaEnabled, buscarMedicamentoCIMA, searchCIMA, clearLocalNormalizationConfig };
 }());
