@@ -183,6 +183,30 @@
     XLSX.writeFile(wb, filename);
   }
 
+  const STANDARD_HEADERS = ['Fecha', 'Número de historia clínico', 'TAR antiguo', 'TAR nuevo', 'Motivo'];
+
+  function standardRows(records) {
+    return (records || []).map((r) => ({
+      Fecha: r.fecha || '',
+      'Número de historia clínico': r.patient_id || '',
+      'TAR antiguo': r.tar_antiguo_original || r.tar_antiguo || '',
+      'TAR nuevo': r.tar_nuevo_original || r.tar_nuevo || '',
+      Motivo: r.motivo_original || r.motivo_detalle || r.motivo_normalizado || ''
+    }));
+  }
+
+  function exportStandardXLSX(records, filename = 'historico_completo_cambiosTAR_formato_estandar.xlsx') {
+    const rows = standardRows(records);
+    if (!hasXlsxLibrary()) {
+      const csv = [STANDARD_HEADERS.join(';'), ...rows.map((row) => STANDARD_HEADERS.map((h) => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
+      return downloadBlob(`﻿${csv}`, filename.replace(/\.xlsx$/i, '.csv'), 'text/csv;charset=utf-8');
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows, { header: STANDARD_HEADERS });
+    XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
+    XLSX.writeFile(wb, filename);
+  }
+
   function templateXLSX() {
     const rows = [{ Fecha: '', 'Número de historia clínico': '', 'TAR antiguo': '', 'TAR nuevo': '', Motivo: '' }, { Fecha: 'No subir esta plantilla a GitHub ni compartirla con datos reales.', 'Número de historia clínico': '', 'TAR antiguo': '', 'TAR nuevo': '', Motivo: '' }];
     if (!window.XLSX) {
@@ -241,5 +265,5 @@
     return sheet.rows;
   }
 
-  window.CambiosIO = { EXPECTED, normalizeHeader, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, sanitizeRecordForBackup, downloadBlob, exportCSV, exportJSON, exportXLSX, templateXLSX, hasXlsxLibrary, guessMapping, worksheetToRows, readExcelWorkbook, readExcel };
+  window.CambiosIO = { EXPECTED, normalizeHeader, normalizeText, normalizeReason, toDateString, deriveRecord, duplicateKey, publicRows, sanitizeRecordForBackup, downloadBlob, exportCSV, exportJSON, exportXLSX, exportStandardXLSX, templateXLSX, hasXlsxLibrary, guessMapping, worksheetToRows, readExcelWorkbook, readExcel };
 }());

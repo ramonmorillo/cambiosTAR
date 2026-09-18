@@ -274,8 +274,10 @@
           <label class="btn ghost file-label">Importar backup JSON<input id="backup-file" type="file" accept="application/json,.json" hidden /></label>
           <button class="btn secondary" id="export-period-btn">Exportar registros de periodo del informe</button>
           <button class="btn secondary" id="download-template-btn">Descargar plantilla Excel</button>
+          <button class="btn primary" id="export-historico-estandar-btn">Descargar histórico completo (formato estándar de importación)</button>
         </div>
         <p class="small muted">La plantilla incluye: Fecha, Número de historia clínico, TAR antiguo, TAR nuevo y Motivo. El backup JSON incluye también el diccionario TAR local personalizado. No debe subirse a GitHub ni compartirse con datos reales.</p>
+        <p class="small muted">El histórico completo en formato estándar exporta <strong>todos</strong> los registros de la base de datos local con las mismas 5 columnas que la plantilla de importación (Fecha, Número de historia clínico, TAR antiguo, TAR nuevo, Motivo), usando siempre el <code>patient_id</code> seudonimizado (nunca el número de historia clínica real). Sirve como copia de seguridad reimportable en esta u otra instalación de cambiosTAR mediante el mismo asistente de importación de Excel.</p>
       </article>
     </section>
   </main>
